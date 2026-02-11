@@ -1,0 +1,72 @@
+﻿apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wazuh-vector-config
+data:
+  vector.yaml: |
+    api:
+      enabled: true
+      address: 0.0.0.0:8686
+
+    data_dir: /tmp/vector
+
+    sources:
+      wazuh_alerts:
+        type: file
+        include:
+          - /var/ossec/logs/alerts/alerts.json
+        read_from: end
+        fingerprint:
+          strategy: checksum
+        decoding:
+          codec: json
+
+    transforms:
+      normalize:
+        type: remap
+        inputs: ["wazuh_alerts"]
+        source: |
+          .event_source = "wazuh"
+          .ingested_at = now()
+          .rule = .rule ?? {}
+          .rule.level = to_int(.rule.level) ?? 0
+
+      high_sev:
+        type: filter
+        inputs: ["normalize"]
+        condition: '.rule.level >= 10'
+
+    sinks:
+      opensearch_all:
+        type: elasticsearch
+        inputs: ["normalize"]
+        endpoints:
+          - ""
+        mode: bulk
+        bulk:
+          index: "wazuh-alerts-%Y.%m.%d"
+        healthcheck: true
+        request:
+          timeout_secs: 10
+          retry_attempts: 10
+          retry_backoff_secs: 2
+        batch:
+          max_events: 200
+          timeout_secs: 2
+
+      notify_high:
+        type: http
+        inputs: ["high_sev"]
+        uri: ""
+        method: post
+        encoding:
+          codec: json
+        request:
+          timeout_secs: 5
+          retry_attempts: 10
+          retry_backoff_secs: 2
+          headers:
+            Content-Type: "application/json"
+        batch:
+          max_events: 1
+          timeout_secs: 1

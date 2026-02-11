@@ -6,3 +6,4 @@ resources:
   - ../../platform/notify/overlays/dev
   - ../../platform/opensearch/overlays/dev
   - ../../platform/opensearch-dashboards/overlays/dev
+  - ../../platform/wazuh/overlays/dev

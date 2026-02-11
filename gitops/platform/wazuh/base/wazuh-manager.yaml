@@ -1,0 +1,134 @@
+﻿apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wazuh-manager
+  labels:
+    app: wazuh-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wazuh-manager
+  template:
+    metadata:
+      labels:
+        app: wazuh-manager
+    spec:
+      containers:
+        - name: wazuh-manager
+          image: wazuh/wazuh-manager:4.14.2
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: agent-udp
+              containerPort: 1514
+              protocol: UDP
+            - name: agent-tcp
+              containerPort: 1514
+              protocol: TCP
+            - name: enrollment
+              containerPort: 1515
+              protocol: TCP
+            - name: api
+              containerPort: 55000
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "1200Mi"
+            limits:
+              cpu: "1000m"
+              memory: "2500Mi"
+          volumeMounts:
+            - name: wazuh-data
+              mountPath: /var/ossec
+          readinessProbe:
+            exec:
+              command: ["/bin/sh","-lc","test -f /var/ossec/logs/ossec.log && pgrep -f wazuh-analysisd >/dev/null"]
+            initialDelaySeconds: 35
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 12
+          livenessProbe:
+            exec:
+              command: ["/bin/sh","-lc","pgrep -f wazuh-analysisd >/dev/null"]
+            initialDelaySeconds: 90
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 6
+
+        - name: vector
+          image: timberio/vector:0.53.0-alpine
+          imagePullPolicy: IfNotPresent
+          args: ["--config", "/etc/vector/vector.yaml"]
+          env:
+            - name: OPENSEARCH_ENDPOINT
+              value: "http://opensearch.platform-opensearch.svc.cluster.local:9200"
+            - name: NOTIFY_ENDPOINT
+              value: "http://notify-webhook.platform-notify.svc.cluster.local:9900/"
+          resources:
+            requests:
+              cpu: "25m"
+              memory: "96Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+          ports:
+            - name: vector-health
+              containerPort: 8686
+          volumeMounts:
+            - name: wazuh-data
+              mountPath: /var/ossec
+              readOnly: true
+            - name: vector-config
+              mountPath: /etc/vector
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8686
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+      volumes:
+        - name: wazuh-data
+          persistentVolumeClaim:
+            claimName: wazuh-manager-data
+        - name: vector-config
+          configMap:
+            name: wazuh-vector-config
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wazuh-manager-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wazuh-manager
+spec:
+  selector:
+    app: wazuh-manager
+  type: ClusterIP
+  ports:
+    - name: agent-udp
+      port: 1514
+      targetPort: 1514
+      protocol: UDP
+    - name: agent-tcp
+      port: 1514
+      targetPort: 1514
+      protocol: TCP
+    - name: enrollment
+      port: 1515
+      targetPort: 1515
+      protocol: TCP
+    - name: api
+      port: 55000
+      targetPort: 55000
+      protocol: TCP
