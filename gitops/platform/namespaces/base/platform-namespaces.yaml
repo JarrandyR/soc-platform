@@ -1,0 +1,14 @@
+﻿apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform-wazuh
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform-opensearch
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform-notify
