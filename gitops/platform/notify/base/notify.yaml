@@ -14,21 +14,11 @@ spec:
     spec:
       containers:
         - name: webhook
-          image: ghcr.io/adnanh/webhook:2.8.1
+          image: hashicorp/http-echo:0.2.3
           args:
-            - "-verbose"
-            - "-hooks=/etc/webhook/hooks.json"
-            - "-hotreload"
+            - "-text=SOC Notify OK"
           ports:
-            - containerPort: 9000
-          volumeMounts:
-            - name: hooks
-              mountPath: /etc/webhook
-              readOnly: true
-      volumes:
-        - name: hooks
-          configMap:
-            name: notify-hooks
+            - containerPort: 5678
 ---
 apiVersion: v1
 kind: Service
@@ -38,6 +28,5 @@ spec:
   selector:
     app: notify-webhook
   ports:
-    - name: http
-      port: 9000
-      targetPort: 9000
+    - port: 9000
+      targetPort: 5678
