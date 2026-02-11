@@ -5,3 +5,4 @@ resources:
   - ../../platform/namespaces/overlays/dev
   - ../../platform/notify/overlays/dev
   - ../../platform/opensearch/overlays/dev
+  - ../../platform/opensearch-dashboards/overlays/dev
