@@ -1,0 +1,15 @@
+﻿apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: platform-notify
+
+resources:
+  - notify.yaml
+
+configMapGenerator:
+  - name: notify-hooks
+    files:
+      - hooks.json
+
+generatorOptions:
+  disableNameSuffixHash: true
