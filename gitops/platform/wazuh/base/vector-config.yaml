@@ -23,24 +23,27 @@ data:
         type: remap
         inputs: ["wazuh_alerts"]
         source: |
-          # file source emits line in .message
           . = parse_json!(.message)
           .event_source = "wazuh"
           .ingested_at = now()
-          .rule = .rule ?? {}
-          .rule.level = to_int(.rule.level) ?? 0
+          if exists(.rule) && exists(.rule.level) {
+            .rule.level = to_int(.rule.level)
+          } else {
+            .rule = {}
+            .rule.level = 0
+          }
 
       high_sev:
         type: filter
         inputs: ["parse_json"]
-        condition: '.rule.level >= 10'
+        condition: 'to_int(.rule.level) >= 10'
 
     sinks:
       opensearch_all:
         type: elasticsearch
         inputs: ["parse_json"]
         endpoints:
-          - ""
+          - "http://opensearch.platform-opensearch.svc.cluster.local:9200"
         mode: bulk
         bulk:
           index: "wazuh-alerts-%Y.%m.%d"
@@ -56,7 +59,7 @@ data:
       notify_high:
         type: http
         inputs: ["high_sev"]
-        uri: ""
+        uri: "http://notify-webhook.platform-notify.svc.cluster.local:9900/"
         method: post
         encoding:
           codec: json

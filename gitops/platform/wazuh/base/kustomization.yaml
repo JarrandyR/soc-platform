@@ -4,5 +4,6 @@ kind: Kustomization
 namespace: platform-wazuh
 
 resources:
+  - service.yaml
+  - statefulset.yaml
   - vector-config.yaml
-  - wazuh-manager.yaml

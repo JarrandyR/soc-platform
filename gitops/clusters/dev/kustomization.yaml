@@ -7,3 +7,16 @@ resources:
   - ../../platform/opensearch/overlays/dev
   - ../../platform/opensearch-dashboards/overlays/dev
   - ../../platform/wazuh/overlays/dev
+
+patches:
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: wazuh-manager
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: wazuh-manager
+      $patch: delete

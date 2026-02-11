@@ -1,0 +1,25 @@
+﻿apiVersion: v1
+kind: Service
+metadata:
+  name: wazuh-manager
+spec:
+  selector:
+    app: wazuh-manager
+  type: ClusterIP
+  ports:
+    - name: agent-udp
+      port: 1514
+      targetPort: 1514
+      protocol: UDP
+    - name: agent-tcp
+      port: 1514
+      targetPort: 1514
+      protocol: TCP
+    - name: enrollment
+      port: 1515
+      targetPort: 1515
+      protocol: TCP
+    - name: api
+      port: 55000
+      targetPort: 55000
+      protocol: TCP
