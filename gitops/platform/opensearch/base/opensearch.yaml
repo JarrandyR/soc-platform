@@ -15,20 +15,29 @@ spec:
       containers:
         - name: opensearch
           image: opensearchproject/opensearch:2.11.1
+          resources:
+            requests:
+             memory: "512Mi"
+             cpu: "250m"
+            limits:
+            memory: "1Gi"
+            cpu: "500m"
           env:
             - name: discovery.type
               value: single-node
             - name: plugins.security.disabled
               value: "true"
+            - name: OPENSEARCH_JAVA_OPTS
+              value: "-Xms512m -Xmx512m"
           ports:
             - containerPort: 9200
           resources:
             requests:
-              memory: "512Mi"
-              cpu: "250m"
+              memory: "300Mi"
+              cpu: "200m"
             limits:
-              memory: "1Gi"
-              cpu: "500m"
+              memory: "512Mi"
+              cpu: "400m"
 ---
 apiVersion: v1
 kind: Service
