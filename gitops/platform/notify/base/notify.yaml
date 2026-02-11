@@ -1,0 +1,43 @@
+﻿apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notify-webhook
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notify-webhook
+  template:
+    metadata:
+      labels:
+        app: notify-webhook
+    spec:
+      containers:
+        - name: webhook
+          image: ghcr.io/adnanh/webhook:2.8.1
+          args:
+            - "-verbose"
+            - "-hooks=/etc/webhook/hooks.json"
+            - "-hotreload"
+          ports:
+            - containerPort: 9000
+          volumeMounts:
+            - name: hooks
+              mountPath: /etc/webhook
+              readOnly: true
+      volumes:
+        - name: hooks
+          configMap:
+            name: notify-hooks
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notify-webhook
+spec:
+  selector:
+    app: notify-webhook
+  ports:
+    - name: http
+      port: 9000
+      targetPort: 9000

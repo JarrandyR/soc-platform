@@ -2,3 +2,5 @@
 kind: Kustomization
 resources:
   - ../../platform/namespaces/overlays/dev
+
+  - ../../platform/notify/overlays/dev

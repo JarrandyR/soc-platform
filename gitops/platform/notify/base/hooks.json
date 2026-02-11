@@ -1,0 +1,11 @@
+﻿[
+  {
+    "id": "notify",
+    "execute-command": "/bin/sh",
+    "command-working-directory": "/tmp",
+    "pass-arguments-to-command": [
+      { "source": "string", "name": "-lc" },
+      { "source": "string", "name": "echo \"[$(date -Iseconds)] NOTIFY: $WEBHOOK_REQUEST_BODY\" >> /tmp/notify.log; tail -n 50 /tmp/notify.log" }
+    ]
+  }
+]
