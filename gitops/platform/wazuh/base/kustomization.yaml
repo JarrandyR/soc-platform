@@ -4,6 +4,7 @@ kind: Kustomization
 namespace: platform-wazuh
 
 resources:
+  - filebeat-config.yaml
+  - vector-config.yaml
   - service.yaml
   - statefulset.yaml
-  - vector-config.yaml

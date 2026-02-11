@@ -18,18 +18,26 @@ spec:
       terminationGracePeriodSeconds: 60
 
       initContainers:
-        - name: init-ossec
+        - name: init-wazuh-dirs
           image: busybox:1.36
           command:
             - sh
             - -lc
             - |
+              set -e
               mkdir -p /var/ossec/logs/alerts
               touch /var/ossec/logs/alerts/alerts.json
-              chmod -R 0775 /var/ossec || true
+              chmod -R 0775 /var/ossec/logs /var/ossec/queue /var/ossec/etc || true
           volumeMounts:
             - name: wazuh-data
-              mountPath: /var/ossec
+              mountPath: /var/ossec/logs
+              subPath: logs
+            - name: wazuh-data
+              mountPath: /var/ossec/queue
+              subPath: queue
+            - name: wazuh-data
+              mountPath: /var/ossec/etc
+              subPath: etc
 
       containers:
         - name: wazuh-manager
@@ -50,27 +58,42 @@ spec:
               protocol: TCP
           resources:
             requests:
-              cpu: "250m"
+              cpu: "300m"
               memory: "1200Mi"
             limits:
               cpu: "1000m"
-              memory: "2500Mi"
+              memory: "2200Mi"
           volumeMounts:
+            # ✅ persist only subdirs (do NOT mount PVC at /var/ossec)
             - name: wazuh-data
-              mountPath: /var/ossec
+              mountPath: /var/ossec/logs
+              subPath: logs
+            - name: wazuh-data
+              mountPath: /var/ossec/queue
+              subPath: queue
+            - name: wazuh-data
+              mountPath: /var/ossec/etc
+              subPath: etc
+
+            # ✅ provide required filebeat config so container doesn’t exit
+            - name: filebeat-config
+              mountPath: /etc/filebeat/filebeat.yml
+              subPath: filebeat.yml
+
           readinessProbe:
             exec:
-              command: ["/bin/sh","-lc","pgrep -f wazuh-analysisd >/dev/null"]
+              command: ["/bin/sh","-lc","/var/ossec/bin/wazuh-control status | grep -qi running"]
             initialDelaySeconds: 60
             periodSeconds: 10
-            timeoutSeconds: 3
+            timeoutSeconds: 5
             failureThreshold: 12
+
           livenessProbe:
             exec:
-              command: ["/bin/sh","-lc","pgrep -f wazuh-analysisd >/dev/null"]
+              command: ["/bin/sh","-lc","/var/ossec/bin/wazuh-control status | grep -qi running"]
             initialDelaySeconds: 120
             periodSeconds: 20
-            timeoutSeconds: 3
+            timeoutSeconds: 5
             failureThreshold: 6
 
         - name: vector
@@ -79,17 +102,18 @@ spec:
           args: ["--config", "/etc/vector/vector.yaml"]
           resources:
             requests:
-              cpu: "25m"
-              memory: "96Mi"
+              cpu: "50m"
+              memory: "128Mi"
             limits:
-              cpu: "250m"
+              cpu: "300m"
               memory: "256Mi"
           ports:
             - name: vector-health
               containerPort: 8686
           volumeMounts:
             - name: wazuh-data
-              mountPath: /var/ossec
+              mountPath: /var/ossec/logs
+              subPath: logs
               readOnly: true
             - name: vector-config
               mountPath: /etc/vector
@@ -106,6 +130,9 @@ spec:
         - name: vector-config
           configMap:
             name: wazuh-vector-config
+        - name: filebeat-config
+          configMap:
+            name: wazuh-filebeat-config
         - name: vector-data
           emptyDir: {}
 
@@ -113,8 +140,7 @@ spec:
     - metadata:
         name: wazuh-data
       spec:
-        accessModes:
-          - ReadWriteOnce
+        accessModes: ["ReadWriteOnce"]
         resources:
           requests:
             storage: 10Gi
