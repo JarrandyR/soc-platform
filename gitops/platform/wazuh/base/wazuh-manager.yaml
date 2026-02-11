@@ -14,9 +14,24 @@ spec:
       labels:
         app: wazuh-manager
     spec:
+      initContainers:
+        - name: init-ossec-perms
+          image: busybox:1.36
+          command:
+            - sh
+            - -lc
+            - |
+              mkdir -p /var/ossec/logs/alerts
+              touch /var/ossec/logs/alerts/alerts.json
+              chmod -R 0775 /var/ossec
+              chown -R 0:0 /var/ossec || true
+          volumeMounts:
+            - name: wazuh-data
+              mountPath: /var/ossec
+
       containers:
         - name: wazuh-manager
-          image: wazuh/wazuh-manager:4.14.2
+          image: wazuh/wazuh-manager-oss:4.14.2
           imagePullPolicy: IfNotPresent
           ports:
             - name: agent-udp
@@ -43,15 +58,15 @@ spec:
               mountPath: /var/ossec
           readinessProbe:
             exec:
-              command: ["/bin/sh","-lc","test -f /var/ossec/logs/ossec.log && pgrep -f wazuh-analysisd >/dev/null"]
-            initialDelaySeconds: 35
+              command: ["/bin/sh","-lc","test -f /var/ossec/logs/ossec.log || true; pgrep -f wazuh-analysisd >/dev/null"]
+            initialDelaySeconds: 60
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 12
           livenessProbe:
             exec:
               command: ["/bin/sh","-lc","pgrep -f wazuh-analysisd >/dev/null"]
-            initialDelaySeconds: 90
+            initialDelaySeconds: 120
             periodSeconds: 20
             timeoutSeconds: 3
             failureThreshold: 6

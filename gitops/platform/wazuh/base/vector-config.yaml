@@ -16,16 +16,15 @@ data:
         include:
           - /var/ossec/logs/alerts/alerts.json
         read_from: end
-        fingerprint:
-          strategy: checksum
-        decoding:
-          codec: json
+        ignore_not_found: true
 
     transforms:
-      normalize:
+      parse_json:
         type: remap
         inputs: ["wazuh_alerts"]
         source: |
+          # file source emits line in .message
+          . = parse_json!(.message)
           .event_source = "wazuh"
           .ingested_at = now()
           .rule = .rule ?? {}
@@ -33,13 +32,13 @@ data:
 
       high_sev:
         type: filter
-        inputs: ["normalize"]
+        inputs: ["parse_json"]
         condition: '.rule.level >= 10'
 
     sinks:
       opensearch_all:
         type: elasticsearch
-        inputs: ["normalize"]
+        inputs: ["parse_json"]
         endpoints:
           - ""
         mode: bulk
