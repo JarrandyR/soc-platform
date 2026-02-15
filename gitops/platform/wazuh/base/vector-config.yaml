@@ -1,75 +1,82 @@
-api:
-  enabled: true
-  address: 0.0.0.0:8686
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vector-config
+  labels:
+    app: wazuh-manager
+data:
+  vector.yaml: |
+    api:
+      enabled: true
+      address: 0.0.0.0:8686
+      playground: false
 
-# must exist
-data_dir: /tmp
+      # This is why you were getting 404 on /metrics
+      prometheus:
+        enabled: true
 
-sources:
-  sources:
-  wazuh_alerts:
-    type: file
-    include:
-      - /var/ossec/logs/alerts/alerts.json
-    ignore_not_found: false
+    # Must exist; you already set this right
+    data_dir: /tmp
 
-    # DO NOT miss events while testing
-    read_from: beginning
+    sources:
+      wazuh_alerts:
+        type: file
+        include:
+          - /var/ossec/logs/alerts/alerts.json
 
-    # FIX: avoid "too small to fingerprint" forever
-    fingerprint:
-      strategy: checksum
-      bytes: 1
+        # TEMPORARY for testing so you cannot miss events during restarts.
+        # After ingestion works, we can switch back to "end".
+        read_from: beginning
 
-transforms:
-  parse_json:
-    type: remap
-    inputs: ["wazuh_alerts"]
-    source: |
-      # parse line safely
-      . = parse_json(.message) ?? {}
+        ignore_not_found: true
 
-      ts = now()
-      .["@timestamp"] = ts
-      .event_source = "wazuh"
-      .ingested_at = ts
+        # Make fingerprinting deterministic and avoid "too small to fingerprint" weirdness.
+        fingerprint:
+          strategy: checksum
+          lines: 1
+          ignored_header_bytes: 0
 
-      # safe rule.level
-      if !exists(.rule) { .rule = {} }
-      if !exists(.rule.level) { .rule.level = 0 }
-      .rule.level = to_int(.rule.level) ?? 0
+    transforms:
+      parse_json:
+        type: remap
+        inputs: ["wazuh_alerts"]
+        source: |
+          # Parse JSON safely; if bad/empty line, just use {}
+          . = parse_json(.message) ?? {}
+          .event_source = "wazuh"
+          .ingested_at = now()
 
-      # deterministic index name
-      .index = "wazuh-alerts-" + format_timestamp!(ts, "%Y.%m.%d")
+          if !exists(.rule) { .rule = {} }
+          if !exists(.rule.level) { .rule.level = 0 }
+          .rule.level = to_int(.rule.level) ?? 0
 
-sinks:
-   debug_console:
-    type: console
-    inputs: ["parse_json"]
-    encoding:
-      codec: json
+      high_sev:
+        type: filter
+        inputs: ["parse_json"]
+        condition: '(to_int(.rule.level) ?? 0) >= 10'
 
-  opensearch_all:
-    type: elasticsearch
-    inputs: ["parse_json"]
-    endpoints:
-      - "http://opensearch.platform-opensearch.svc.cluster.local:9200"
-    api_version: "v7"
-    mode: bulk
-    compression: gzip
-    bulk:
-      index: "{{ index }}"
-    request:
-      timeout_secs: 10
-      retry_attempts: 10
-      retry_backoff_secs: 2
-    batch:
-      max_events: 200
-      timeout_secs: 2
+    sinks:
+      # PROOF SINK: this will print JSON events into the vector container logs
+      debug_console:
+        type: console
+        inputs: ["parse_json"]
+        encoding:
+          codec: json
 
-  # DEBUG (leave on until you see docs in OpenSearch, then remove)
-  debug_console:
-    type: console
-    inputs: ["parse_json"]
-    encoding:
-      codec: json
+      opensearch_all:
+        type: elasticsearch
+        inputs: ["parse_json"]
+        endpoints:
+          - "http://opensearch.platform-opensearch.svc.cluster.local:9200"
+        api_version: "v7"
+        mode: bulk
+        bulk:
+          index: "wazuh-alerts-%Y.%m.%d"
+        healthcheck: true
+        request:
+          timeout_secs: 15
+          retry_attempts: 10
+          retry_backoff_secs: 2
+        batch:
+          max_events: 200
+          timeout_secs: 2
