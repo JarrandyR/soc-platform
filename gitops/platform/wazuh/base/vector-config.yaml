@@ -1,65 +1,62 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: wazuh-vector-config
-  namespace: platform-wazuh
-data:
-  vector.yaml: |
-    api:
-      enabled: true
-      address: 0.0.0.0:8686
+api:
+  enabled: true
+  address: 0.0.0.0:8686
 
-    # Keep this simple and guaranteed to exist in the container
-    data_dir: /tmp
+# must exist
+data_dir: /tmp
 
-    sources:
-      wazuh_alerts:
-        type: file
-        include:
-          - /var/ossec/logs/alerts/alerts.json
-        read_from: end
-        ignore_not_found: true
+sources:
+  wazuh_alerts:
+    type: file
+    include:
+      - /var/ossec/logs/alerts/alerts.json
+    # IMPORTANT: read existing lines too (for testing)
+    read_from: beginning
+    ignore_not_found: true
 
-    transforms:
-      parse_json:
-        type: remap
-        inputs: ["wazuh_alerts"]
-        source: |
-          # Parse JSON safely; if bad/empty line, just use {}
-          . = parse_json(.message) ?? {}
+transforms:
+  parse_json:
+    type: remap
+    inputs: ["wazuh_alerts"]
+    source: |
+      # parse line safely
+      . = parse_json(.message) ?? {}
 
-          .event_source = "wazuh"
-          .ingested_at = now()
+      ts = now()
+      .["@timestamp"] = ts
+      .event_source = "wazuh"
+      .ingested_at = ts
 
-          # Ensure nested fields exist safely
-          if !exists(.rule) { .rule = {} }
-          if !exists(.rule.level) { .rule.level = 0 }
+      # safe rule.level
+      if !exists(.rule) { .rule = {} }
+      if !exists(.rule.level) { .rule.level = 0 }
+      .rule.level = to_int(.rule.level) ?? 0
 
-          # Convert safely; if conversion fails, default to 0
-          .rule.level = to_int(.rule.level) ?? 0
+      # deterministic index name
+      .index = "wazuh-alerts-" + format_timestamp!(ts, "%Y.%m.%d")
 
-      high_sev:
-        type: filter
-        inputs: ["parse_json"]
-        condition: '(to_int(.rule.level) ?? 0) >= 10'
+sinks:
+  opensearch_all:
+    type: elasticsearch
+    inputs: ["parse_json"]
+    endpoints:
+      - "http://opensearch.platform-opensearch.svc.cluster.local:9200"
+    api_version: "v7"
+    mode: bulk
+    compression: gzip
+    bulk:
+      index: "{{ index }}"
+    request:
+      timeout_secs: 10
+      retry_attempts: 10
+      retry_backoff_secs: 2
+    batch:
+      max_events: 200
+      timeout_secs: 2
 
-    sinks:
-      opensearch_all:
-        type: elasticsearch
-        inputs: ["parse_json"]
-        endpoints:
-          - "http://opensearch.platform-opensearch.svc.cluster.local:9200"
-        # OpenSearch is ES-compatible; this avoids version probing weirdness
-        api_version: "v7"
-        mode: bulk
-        bulk:
-          index: "wazuh-alerts-%Y.%m.%d"
-        healthcheck: true
-        request:
-          timeout_secs: 10
-          retry_attempts: 10
-          retry_backoff_secs: 2
-        batch:
-          max_events: 200
-          timeout_secs: 2
-
+  # DEBUG (leave on until you see docs in OpenSearch, then remove)
+  debug_console:
+    type: console
+    inputs: ["parse_json"]
+    encoding:
+      codec: json
