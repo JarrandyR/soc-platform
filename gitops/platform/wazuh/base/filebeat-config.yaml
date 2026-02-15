@@ -2,18 +2,16 @@
 kind: ConfigMap
 metadata:
   name: wazuh-filebeat-config
+  namespace: platform-wazuh
 data:
   filebeat.yml: |
     filebeat.inputs: []
+    logging.level: warning
 
-    # keep resource use low
     queue.mem:
       events: 128
       flush.min_events: 64
       flush.timeout: 1s
 
-    logging.level: warning
-
-    # output required but unused (no inputs)
     output.elasticsearch:
       hosts: ["http://opensearch.platform-opensearch.svc.cluster.local:9200"]

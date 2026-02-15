@@ -2,6 +2,7 @@
 kind: ConfigMap
 metadata:
   name: wazuh-vector-config
+  namespace: platform-wazuh
 data:
   vector.yaml: |
     api:
@@ -15,7 +16,7 @@ data:
         type: file
         include:
           - /var/ossec/logs/alerts/alerts.json
-        read_from: end
+        read_from: beginning
         ignore_not_found: true
 
     transforms:
@@ -23,23 +24,22 @@ data:
         type: remap
         inputs: ["wazuh_alerts"]
         source: |
-          . = parse_json!(.message)
+          . = parse_json(.message) ?? {}
           .event_source = "wazuh"
           .ingested_at = now()
 
           if !exists(.rule) { .rule = {} }
 
           if exists(.rule.level) {
-            .rule.level, err = to_int(.rule.level)
-            if err != null { .rule.level = 0 }
+            .rule_level = to_int(.rule.level) ?? 0
           } else {
-            .rule.level = 0
+            .rule_level = 0
           }
 
       high_sev:
         type: filter
         inputs: ["parsed"]
-        condition: '.rule.level >= 10'
+        condition: '.rule_level >= 10'
 
     sinks:
       opensearch_all:
@@ -51,6 +51,10 @@ data:
         bulk:
           index: "wazuh-alerts-%Y.%m.%d"
         healthcheck: true
+        request:
+          timeout_secs: 10
+          retry_attempts: 10
+          retry_backoff_secs: 2
 
       notify_high:
         type: http
@@ -60,5 +64,8 @@ data:
         encoding:
           codec: json
         request:
+          timeout_secs: 5
+          retry_attempts: 10
+          retry_backoff_secs: 2
           headers:
             Content-Type: "application/json"

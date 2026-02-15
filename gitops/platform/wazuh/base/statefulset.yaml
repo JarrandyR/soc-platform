@@ -2,6 +2,7 @@
 kind: StatefulSet
 metadata:
   name: wazuh-manager
+  namespace: platform-wazuh
   labels:
     app: wazuh-manager
 spec:
@@ -15,29 +16,36 @@ spec:
       labels:
         app: wazuh-manager
     spec:
+      serviceAccountName: wazuh-manager
       terminationGracePeriodSeconds: 60
+      securityContext:
+        fsGroup: 0
 
       initContainers:
-        - name: init-wazuh-dirs
-          image: busybox:1.36
-          command:
-            - sh
-            - -lc
+        - name: seed-ossec
+          image: wazuh/wazuh-manager:4.14.2
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh","-lc"]
+          args:
             - |
-              set -e
-              mkdir -p /var/ossec/logs/alerts
-              touch /var/ossec/logs/alerts/alerts.json
-              chmod -R 0775 /var/ossec/logs /var/ossec/queue /var/ossec/etc || true
+              set -euo pipefail
+              if [ -f /data/.ossec_initialized ]; then
+                echo "Wazuh /var/ossec already initialized."
+                exit 0
+              fi
+
+              echo "Seeding /var/ossec into PVC..."
+              mkdir -p /data
+              cp -a /var/ossec/. /data/
+              touch /data/.ossec_initialized
+
+              mkdir -p /data/logs/alerts
+              touch /data/logs/alerts/alerts.json
+
+              echo "Seed complete."
           volumeMounts:
             - name: wazuh-data
-              mountPath: /var/ossec/logs
-              subPath: logs
-            - name: wazuh-data
-              mountPath: /var/ossec/queue
-              subPath: queue
-            - name: wazuh-data
-              mountPath: /var/ossec/etc
-              subPath: etc
+              mountPath: /data
 
       containers:
         - name: wazuh-manager
@@ -59,39 +67,27 @@ spec:
           resources:
             requests:
               cpu: "300m"
-              memory: "1200Mi"
+              memory: "1500Mi"
             limits:
               cpu: "1000m"
-              memory: "2200Mi"
+              memory: "2500Mi"
           volumeMounts:
-            # ✅ persist only subdirs (do NOT mount PVC at /var/ossec)
             - name: wazuh-data
-              mountPath: /var/ossec/logs
-              subPath: logs
-            - name: wazuh-data
-              mountPath: /var/ossec/queue
-              subPath: queue
-            - name: wazuh-data
-              mountPath: /var/ossec/etc
-              subPath: etc
-
-            # ✅ provide required filebeat config so container doesn’t exit
+              mountPath: /var/ossec
             - name: filebeat-config
               mountPath: /etc/filebeat/filebeat.yml
               subPath: filebeat.yml
-
           readinessProbe:
             exec:
-              command: ["/bin/sh","-lc","/var/ossec/bin/wazuh-control status | grep -qi running"]
-            initialDelaySeconds: 60
+              command: ["/bin/sh","-lc","test -x /var/ossec/bin/wazuh-control && /var/ossec/bin/wazuh-control status | grep -qi running"]
+            initialDelaySeconds: 90
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 12
-
           livenessProbe:
             exec:
-              command: ["/bin/sh","-lc","/var/ossec/bin/wazuh-control status | grep -qi running"]
-            initialDelaySeconds: 120
+              command: ["/bin/sh","-lc","test -x /var/ossec/bin/wazuh-control && /var/ossec/bin/wazuh-control status | grep -qi running"]
+            initialDelaySeconds: 150
             periodSeconds: 20
             timeoutSeconds: 5
             failureThreshold: 6
@@ -100,6 +96,9 @@ spec:
           image: timberio/vector:0.53.0-alpine
           imagePullPolicy: IfNotPresent
           args: ["--config", "/etc/vector/vector.yaml"]
+          ports:
+            - name: vector-health
+              containerPort: 8686
           resources:
             requests:
               cpu: "50m"
@@ -107,13 +106,9 @@ spec:
             limits:
               cpu: "300m"
               memory: "256Mi"
-          ports:
-            - name: vector-health
-              containerPort: 8686
           volumeMounts:
             - name: wazuh-data
-              mountPath: /var/ossec/logs
-              subPath: logs
+              mountPath: /var/ossec
               readOnly: true
             - name: vector-config
               mountPath: /etc/vector
@@ -139,8 +134,10 @@ spec:
   volumeClaimTemplates:
     - metadata:
         name: wazuh-data
+        labels:
+          app: wazuh-manager
       spec:
         accessModes: ["ReadWriteOnce"]
         resources:
           requests:
-            storage: 10Gi
+            storage: 15Gi

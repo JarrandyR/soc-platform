@@ -2,6 +2,7 @@
 kind: Service
 metadata:
   name: wazuh-manager
+  namespace: platform-wazuh
 spec:
   selector:
     app: wazuh-manager
