@@ -63,19 +63,3 @@ data:
           max_events: 200
           timeout_secs: 2
 
-      notify_high:
-        type: http
-        inputs: ["high_sev"]
-        uri: "http://notify-webhook.platform-notify.svc.cluster.local:9900/"
-        method: post
-        encoding:
-          codec: json
-        request:
-          timeout_secs: 5
-          retry_attempts: 10
-          retry_backoff_secs: 2
-          headers:
-            Content-Type: "application/json"
-        batch:
-          max_events: 1
-          timeout_secs: 1
