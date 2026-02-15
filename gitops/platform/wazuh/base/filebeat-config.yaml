@@ -5,13 +5,26 @@ metadata:
   namespace: platform-wazuh
 data:
   filebeat.yml: |
-    filebeat.inputs: []
-    logging.level: warning
+    filebeat.inputs:
+      - type: filestream
+        id: wazuh-alerts
+        enabled: true
+        paths:
+          - /var/ossec/logs/alerts/alerts.json
+        prospector.scanner.check_interval: 5s
 
+    # keep it light (8GB node)
     queue.mem:
-      events: 128
-      flush.min_events: 64
+      events: 1024
+      flush.min_events: 256
       flush.timeout: 1s
+
+    logging.level: info
+    logging.to_files: false
+
+    setup.ilm.enabled: false
 
     output.elasticsearch:
       hosts: ["http://opensearch.platform-opensearch.svc.cluster.local:9200"]
+      index: "wazuh-alerts-%{+yyyy.MM.dd}"
+      worker: 1

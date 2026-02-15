@@ -2,10 +2,8 @@
 kind: Kustomization
 
 resources:
-
   - serviceaccount.yaml
   - rbac.yaml
   - service.yaml
   - filebeat-config.yaml
-  - vector-config.yaml
   - statefulset.yaml
