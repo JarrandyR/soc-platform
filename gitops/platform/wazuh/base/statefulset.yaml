@@ -76,7 +76,8 @@ spec:
 
         - name: vector
           image: timberio/vector:0.53.0-alpine
-          args: ["--config", "/etc/vector/vector.yaml"]
+          # IMPORTANT: run Vector using the config file path directly (no --config flag)
+          args: ["/etc/vector/vector.yaml"]
           readinessProbe:
             exec:
               command: ["sh","-lc","vector validate --config-yaml /etc/vector/vector.yaml"]
@@ -100,6 +101,7 @@ spec:
         - name: vector-config
           configMap:
             name: wazuh-vector-config
+            optional: false
 
   volumeClaimTemplates:
     - metadata:
