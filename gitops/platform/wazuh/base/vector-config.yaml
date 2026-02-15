@@ -36,6 +36,12 @@ transforms:
       .index = "wazuh-alerts-" + format_timestamp!(ts, "%Y.%m.%d")
 
 sinks:
+   debug_console:
+    type: console
+    inputs: ["parse_json"]
+    encoding:
+      codec: json
+
   opensearch_all:
     type: elasticsearch
     inputs: ["parse_json"]
