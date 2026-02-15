@@ -9,7 +9,7 @@ data:
       enabled: true
       address: 0.0.0.0:8686
 
-    # IMPORTANT: /tmp exists in the container. /tmp/vector does NOT.
+    # Keep this simple and guaranteed to exist in the container
     data_dir: /tmp
 
     sources:
@@ -25,14 +25,17 @@ data:
         type: remap
         inputs: ["wazuh_alerts"]
         source: |
-          # .message is the line from the file.
-          # If it isn't valid JSON yet, don't crash the pipeline.
+          # Parse JSON safely; if bad/empty line, just use {}
           . = parse_json(.message) ?? {}
+
           .event_source = "wazuh"
           .ingested_at = now()
 
-          # Guarantee .rule.level is always an int
-          .rule = .rule ?? {}
+          # Ensure nested fields exist safely
+          if !exists(.rule) { .rule = {} }
+          if !exists(.rule.level) { .rule.level = 0 }
+
+          # Convert safely; if conversion fails, default to 0
           .rule.level = to_int(.rule.level) ?? 0
 
       high_sev:
@@ -46,6 +49,8 @@ data:
         inputs: ["parse_json"]
         endpoints:
           - "http://opensearch.platform-opensearch.svc.cluster.local:9200"
+        # OpenSearch is ES-compatible; this avoids version probing weirdness
+        api_version: "v7"
         mode: bulk
         bulk:
           index: "wazuh-alerts-%Y.%m.%d"
