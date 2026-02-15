@@ -6,13 +6,20 @@ api:
 data_dir: /tmp
 
 sources:
+  sources:
   wazuh_alerts:
     type: file
     include:
       - /var/ossec/logs/alerts/alerts.json
-    # IMPORTANT: read existing lines too (for testing)
+    ignore_not_found: false
+
+    # DO NOT miss events while testing
     read_from: beginning
-    ignore_not_found: true
+
+    # FIX: avoid "too small to fingerprint" forever
+    fingerprint:
+      strategy: checksum
+      bytes: 1
 
 transforms:
   parse_json:
