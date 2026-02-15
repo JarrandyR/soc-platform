@@ -3,13 +3,3 @@ kind: Kustomization
 
 resources:
   - ../../base
-  - resources:
-  - serviceaccount.yaml
-  - service.yaml
-  - statefulset.yaml
-  - vector-config.yaml
-
-labels:
-  - pairs:
-      env: dev
-      app.kubernetes.io/part-of: soc-platform
