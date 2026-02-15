@@ -24,8 +24,6 @@ spec:
               mkdir -p /var/ossec/logs/alerts
               touch /var/ossec/logs/alerts/alerts.json
               chmod -R 0775 /var/ossec
-              # Some Wazuh images run as root; some drop privileges internally.
-              # Keep it permissive but not world-writable.
               chown -R 0:0 /var/ossec || true
           volumeMounts:
             - name: wazuh-data
@@ -33,7 +31,7 @@ spec:
 
       containers:
         - name: wazuh-manager
-          image: wazuh/wazuh-manager:4.14.2
+          image: wazuh/wazuh-manager-oss:4.14.2
           imagePullPolicy: IfNotPresent
           ports:
             - name: agent-udp
@@ -60,8 +58,8 @@ spec:
               mountPath: /var/ossec
           readinessProbe:
             exec:
-              command: ["/bin/sh","-lc","test -f /var/ossec/logs/ossec.log && pgrep -f wazuh-analysisd >/dev/null"]
-            initialDelaySeconds: 45
+              command: ["/bin/sh","-lc","test -f /var/ossec/logs/ossec.log || true; pgrep -f wazuh-analysisd >/dev/null"]
+            initialDelaySeconds: 60
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 12
