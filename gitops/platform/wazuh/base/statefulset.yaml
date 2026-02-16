@@ -77,7 +77,9 @@ spec:
         - name: vector
           image: timberio/vector:0.53.0-alpine
           # IMPORTANT: run Vector using the config file path directly (no --config flag)
-          args: ["/etc/vector/vector.yaml"]
+          args: 
+            - "--config"
+            - "/etc/vector/vector.yaml"
           readinessProbe:
             exec:
               command: ["sh","-lc","vector validate --config-yaml /etc/vector/vector.yaml"]
@@ -96,6 +98,8 @@ spec:
               subPath: logs
             - name: vector-config
               mountPath: /etc/vector
+            - name: vector-data
+              mountPath: /vector-data-dir
 
       volumes:
         - name: vector-config
@@ -113,3 +117,14 @@ spec:
         resources:
           requests:
             storage: 15Gi
+
+    - metadata:
+        name: vector-data
+        labels:
+          app: wazuh-manager
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 1Gi

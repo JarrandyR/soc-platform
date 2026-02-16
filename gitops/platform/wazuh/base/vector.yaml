@@ -1,0 +1,53 @@
+api:
+  enabled: true
+  address: 0.0.0.0:8686
+
+data_dir: /vector-data-dir
+
+sources:
+  wazuh_alerts:
+    type: file
+    include:
+      - /var/ossec/logs/alerts/alerts.json
+    read_from: beginning
+    ignore_not_found: true
+
+transforms:
+  parse_json:
+    type: remap
+    inputs: ["wazuh_alerts"]
+    source: |
+      . = parse_json(.message) ?? {}
+      .event_source = "wazuh"
+      .ingested_at = now()
+
+      if !exists(.rule) { .rule = {} }
+      if !exists(.rule.level) { .rule.level = 0 }
+      .rule.level = to_int(.rule.level) ?? 0
+
+sinks:
+  opensearch_all:
+    type: elasticsearch
+    inputs: ["parse_json"]
+    endpoints:
+      - "http://opensearch.platform-opensearch.svc.cluster.local:9200"
+    api_version: "v7"
+    mode: bulk
+
+    # efficiency: reduce bandwidth + speed bulk uploads
+    compression: gzip
+
+    bulk:
+      index: "wazuh-alerts-%Y.%m.%d"
+
+    # production-safe timeouts + retries
+    healthcheck: true
+    request:
+      timeout_secs: 30
+      retry_attempts: 10
+      retry_backoff_secs: 2
+
+    # efficiency: tune batching for throughput
+    batch:
+      max_events: 1000
+      timeout_secs: 1
