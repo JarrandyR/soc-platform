@@ -18,7 +18,7 @@ spec:
       annotations:
         # Bump this value whenever you change gitops/platform/wazuh/base/vector.yaml
         # Forces a deterministic rollout so the pod remounts updated config.
-        vector-config-rev: "1"
+        vector-config-rev: "2"
     spec:
       serviceAccountName: wazuh-manager
       terminationGracePeriodSeconds: 60

@@ -2,8 +2,8 @@ api:
   enabled: true
   address: 0.0.0.0:8686
 
-# Critical for checkpoint persistence
-# Prevents duplicate ingestion after restart
+# MUST be persistent (you already mount /vector-data-dir to a PVC)
+# This stores checkpoints + disk buffers so restarts don't duplicate or silently lose data.
 data_dir: /vector-data-dir
 
 sources:
@@ -13,9 +13,9 @@ sources:
       - /var/ossec/logs/alerts/alerts.json
     read_from: end
     ignore_not_found: true
+    # Safer rotation behavior than default fingerprinting
     fingerprint:
-      strategy: device_and_inode
-    ignore_older_secs: 0
+    strategy: device_and_inode
 
 transforms:
   parse_json:
@@ -27,17 +27,15 @@ transforms:
 sinks:
   opensearch_all:
     type: elasticsearch
-    inputs: ["parse_json"]
-
+  inputs: ["parse_json"]
     endpoints:
-      - http://opensearch.platform-opensearch.svc.cluster.local:9200
-
+    - http://opensearch.platform-opensearch.svc.cluster.local:9200
     api_version: v7
     mode: bulk
     compression: gzip
 
     bulk:
-      index: "wazuh-alerts-%Y.%m.%d"
+      index: wazuh-alerts-%Y.%m.%d
 
     healthcheck: true
 
@@ -50,6 +48,7 @@ sinks:
       max_events: 1000
       timeout_secs: 1
 
+    # Prevents silent loss during OpenSearch hiccups
     buffer:
       type: disk
-      max_size: 268435488  # 256MB disk buffer
+      max_size: 268435488  # 256 MiB
