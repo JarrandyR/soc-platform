@@ -9,45 +9,32 @@ sources:
     type: file
     include:
       - /var/ossec/logs/alerts/alerts.json
-    read_from: beginning
+    read_from: end
     ignore_not_found: true
 
 transforms:
   parse_json:
     type: remap
     inputs: ["wazuh_alerts"]
-  sources:
-    wazuh_alerts:
-    type: file
-    include:
-      - /var/ossec/logs/alerts/alerts.json
-    read_from: end
-    ignore_not_found: true
-
+    source: |
+      . = parse_json!(.message)
 
 sinks:
   opensearch_all:
     type: elasticsearch
     inputs: ["parse_json"]
     endpoints:
-      - "http://opensearch.platform-opensearch.svc.cluster.local:9200"
-    api_version: "v7"
+      - http://opensearch.platform-opensearch.svc.cluster.local:9200
+    api_version: v7
     mode: bulk
-
-    # efficiency: reduce bandwidth + speed bulk uploads
     compression: gzip
-
     bulk:
-      index: "wazuh-alerts-%Y.%m.%d"
-
-    # production-safe timeouts + retries
+      index: wazuh-alerts-%Y.%m.%d
     healthcheck: true
     request:
       timeout_secs: 30
       retry_attempts: 10
       retry_backoff_secs: 2
-
-    # efficiency: tune batching for throughput
     batch:
       max_events: 1000
       timeout_secs: 1
