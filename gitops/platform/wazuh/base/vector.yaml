@@ -2,6 +2,8 @@ api:
   enabled: true
   address: 0.0.0.0:8686
 
+# Critical for checkpoint persistence
+# Prevents duplicate ingestion after restart
 data_dir: /vector-data-dir
 
 sources:
@@ -11,6 +13,9 @@ sources:
       - /var/ossec/logs/alerts/alerts.json
     read_from: end
     ignore_not_found: true
+    fingerprint:
+      strategy: device_and_inode
+    ignore_older_secs: 0
 
 transforms:
   parse_json:
@@ -23,18 +28,28 @@ sinks:
   opensearch_all:
     type: elasticsearch
     inputs: ["parse_json"]
+
     endpoints:
       - http://opensearch.platform-opensearch.svc.cluster.local:9200
+
     api_version: v7
     mode: bulk
     compression: gzip
+
     bulk:
-      index: wazuh-alerts-%Y.%m.%d
+      index: "wazuh-alerts-%Y.%m.%d"
+
     healthcheck: true
+
     request:
       timeout_secs: 30
       retry_attempts: 10
       retry_backoff_secs: 2
+
     batch:
       max_events: 1000
       timeout_secs: 1
+
+    buffer:
+      type: disk
+      max_size: 268435488  # 256MB disk buffer
