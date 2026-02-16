@@ -16,14 +16,14 @@ transforms:
   parse_json:
     type: remap
     inputs: ["wazuh_alerts"]
-    source: |
-      . = parse_json(.message) ?? {}
-      .event_source = "wazuh"
-      .ingested_at = now()
+  sources:
+    wazuh_alerts:
+    type: file
+    include:
+      - /var/ossec/logs/alerts/alerts.json
+    read_from: end
+    ignore_not_found: true
 
-      if !exists(.rule) { .rule = {} }
-      if !exists(.rule.level) { .rule.level = 0 }
-      .rule.level = to_int(.rule.level) ?? 0
 
 sinks:
   opensearch_all:
