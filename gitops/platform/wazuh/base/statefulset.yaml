@@ -22,6 +22,30 @@ spec:
         fsGroup: 0
 
       initContainers:
+        - name: init-wazuh-dirs
+          image: busybox:1.36
+          command: ["/bin/sh","-lc"]
+          args:
+            - |
+              set -e
+              # ensure required runtime directories exist inside mounted subPaths
+              mkdir -p /var/ossec/var/run
+              mkdir -p /var/ossec/queue/sockets
+              mkdir -p /var/ossec/queue/alerts
+              mkdir -p /var/ossec/queue/db
+              chmod -R 0775 /var/ossec/var /var/ossec/queue || true
+              ls -la /var/ossec/var || true
+              ls -la /var/ossec/var/run || true
+              ls -la /var/ossec/queue || true
+          volumeMounts:
+            - name: wazuh-data
+              mountPath: /var/ossec/var
+              subPath: var
+            - name: wazuh-data
+              mountPath: /var/ossec/queue
+              subPath: queue
+
+
         - name: init-alerts-file
           image: busybox:1.36
           command: ["/bin/sh","-lc"]
@@ -36,6 +60,8 @@ spec:
             - name: wazuh-data
               mountPath: /var/ossec/logs
               subPath: logs
+
+
 
       containers:
         - name: wazuh-manager
