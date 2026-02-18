@@ -1,0 +1,10 @@
+{
+  "spec": {
+    "syncPolicy": {
+      "syncOptions": [
+        "CreateNamespace=true",
+        "Replace=true"
+      ]
+    }
+  }
+}

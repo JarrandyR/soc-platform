@@ -1,0 +1,5 @@
+{
+  "data": {
+    "vector.yaml": "api:\n  enabled: true\n  address: 0.0.0.0:8686\n\ndata_dir: /vector-data-dir\n\nsources:\n  wazuh_alerts:\n    type: file\n    include:\n      - /var/ossec/logs/alerts/alerts.json\n    read_from: end\n    ignore_not_found: true\n\ntransforms:\n  parse_json:\n    type: remap\n    inputs: [\"wazuh_alerts\"]\n    source: |\n      . = parse_json!(.message)\n\nsinks:\n  opensearch_all:\n    type: elasticsearch\n    inputs: [\"parse_json\"]\n    endpoints:\n      - http://opensearch.platform-opensearch.svc.cluster.local:9200\n    api_version: v7\n    mode: bulk\n    compression: gzip\n    bulk:\n      index: wazuh-alerts-%Y.%m.%d\n    healthcheck: true\n    request:\n      timeout_secs: 30\n      retry_attempts: 10\n      retry_backoff_secs: 2\n    batch:\n      max_events: 1000\n      timeout_secs: 1\n"
+  }
+}

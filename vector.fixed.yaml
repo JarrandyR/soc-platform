@@ -1,0 +1,40 @@
+api:
+  enabled: true
+  address: 0.0.0.0:8686
+
+data_dir: /vector-data-dir
+
+sources:
+  wazuh_alerts:
+    type: file
+    include:
+      - /var/ossec/logs/alerts/alerts.json
+    read_from: end
+    ignore_not_found: true
+
+transforms:
+  parse_json:
+    type: remap
+    inputs: ["wazuh_alerts"]
+    source: |
+      . = parse_json!(.message)
+
+sinks:
+  opensearch_all:
+    type: elasticsearch
+    inputs: ["parse_json"]
+    endpoints:
+      - http://opensearch.platform-opensearch.svc.cluster.local:9200
+    api_version: v7
+    mode: bulk
+    compression: gzip
+    bulk:
+      index: wazuh-alerts-%Y.%m.%d
+    healthcheck: true
+    request:
+      timeout_secs: 30
+      retry_attempts: 10
+      retry_backoff_secs: 2
+    batch:
+      max_events: 1000
+      timeout_secs: 1
