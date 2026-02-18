@@ -8,25 +8,32 @@ sources:
   wazuh_alerts:
     type: file
     include:
-      - /var/ossec/logs/alerts/alerts.json
+      - /var/ossec/logs/alerts/alerts.log
     read_from: end
     ignore_not_found: true
     fingerprint:
       strategy: device_and_inode
 
 transforms:
-  parse_json:
+  normalize_event:
     type: remap
     inputs:
       - wazuh_alerts
     source: |
-      . = parse_json!(.message)
+      # Wazuh alerts.log may be JSON or plain depending on version/config.
+      # Try JSON first; if it fails, keep original message.
+      parsed, err = parse_json(.message)
+      if err == null {
+        . = parsed
+      } else {
+        .event_original = .message
+      }
 
 sinks:
   opensearch_all:
     type: elasticsearch
     inputs:
-      - parse_json
+      - normalize_event
     endpoints:
       - http://opensearch.platform-opensearch.svc.cluster.local:9200
     api_version: v7
