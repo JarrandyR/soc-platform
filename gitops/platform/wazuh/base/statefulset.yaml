@@ -17,7 +17,7 @@ spec:
         app: wazuh-manager
       annotations:
         # bump this number any time you change Vector config or init logic
-        vector-config-rev: "5"
+        vector-config-rev: "6"
     spec:
       serviceAccountName: wazuh-manager
       terminationGracePeriodSeconds: 60
