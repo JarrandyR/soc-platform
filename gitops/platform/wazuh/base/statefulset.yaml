@@ -1,4 +1,4 @@
-﻿apiVersion: apps/v1
+apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: wazuh-manager
@@ -16,9 +16,8 @@ spec:
       labels:
         app: wazuh-manager
       annotations:
-        # Bump this value whenever you change gitops/platform/wazuh/base/vector.yaml
-        # Forces a deterministic rollout so the pod remounts updated config.
-        vector-config-rev: "3"
+        # bump this number any time you change Vector config or init logic
+        vector-config-rev: "4"
     spec:
       serviceAccountName: wazuh-manager
       terminationGracePeriodSeconds: 60
@@ -56,9 +55,15 @@ spec:
             - |
               set -e
               mkdir -p /var/ossec/logs/alerts
-              : > /var/ossec/logs/alerts/alerts.json
+
+              # PRODUCTION-SAFE:
+              # Do NOT truncate alerts.json on restart (prevents silent data loss).
+              if [ ! -f /var/ossec/logs/alerts/alerts.json ]; then
+                touch /var/ossec/logs/alerts/alerts.json
+              fi
+
               chmod 0666 /var/ossec/logs/alerts/alerts.json || true
-              ls -la /var/ossec/logs/alerts
+              ls -la /var/ossec/logs/alerts || true
           volumeMounts:
             - name: wazuh-data
               mountPath: /var/ossec/logs
