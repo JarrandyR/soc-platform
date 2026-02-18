@@ -1,0 +1,8 @@
+# Local scratch / patch artifacts
+patch*.json
+q.json
+vector.fixed.yaml
+vector.yaml
+pvc-finalizers-clear.json
+*.tmp
+*.bak
