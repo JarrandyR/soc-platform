@@ -16,56 +16,41 @@ spec:
       labels:
         app: wazuh-manager
       annotations:
-        # bump this number any time you change Vector config or init logic
-        vector-config-rev: "6"
+        vector-config-rev: "8"
     spec:
       serviceAccountName: wazuh-manager
       terminationGracePeriodSeconds: 60
+
+      # LAB: run as root to remove permission blockers immediately.
       securityContext:
+        runAsUser: 0
+        runAsGroup: 0
         fsGroup: 0
 
       initContainers:
-        - name: init-wazuh-dirs
+        - name: init-wazuh-perms
           image: busybox:1.36
           command: ["/bin/sh","-lc"]
           args:
             - |
-              set -e
-              # ensure required runtime directories exist inside mounted subPaths
+              set -eux
               mkdir -p /var/ossec/var/run
-              mkdir -p /var/ossec/queue/sockets
-              mkdir -p /var/ossec/queue/alerts
-              mkdir -p /var/ossec/queue/db
-              chmod -R 0775 /var/ossec/var /var/ossec/queue || true
-              ls -la /var/ossec/var || true
+              mkdir -p /var/ossec/queue/{sockets,alerts,db,logcollector}
+              mkdir -p /var/ossec/logs/alerts
+              touch /var/ossec/logs/alerts/alerts.json
+              chmod -R 0775 /var/ossec/var /var/ossec/queue /var/ossec/logs || true
+              chmod 0666 /var/ossec/logs/alerts/alerts.json || true
               ls -la /var/ossec/var/run || true
-              ls -la /var/ossec/queue || true
+              ls -la /var/ossec/queue/sockets || true
+              ls -la /var/ossec/logs/alerts || true
           volumeMounts:
             - name: wazuh-data
               mountPath: /var/ossec/var
               subPath: var
             - name: wazuh-data
               mountPath: /var/ossec/queue
-              subPath: queue
-
-        - name: init-alerts-file
-          image: busybox:1.36
-          command: ["/bin/sh","-lc"]
-          args:
-            - |
-              set -e
-              mkdir -p /var/ossec/logs/alerts
-
-              # PRODUCTION-SAFE:
-              # Do NOT truncate alerts.json on restart (prevents silent data loss).
-              if [ ! -f /var/ossec/logs/alerts/alerts.json ]; then
-                touch /var/ossec/logs/alerts/alerts.json
-              fi
-
-              chmod 0666 /var/ossec/logs/alerts/alerts.json || true
-              ls -la /var/ossec/logs/alerts || true
-          volumeMounts:
-            - name: wazuh-data
+          subPath: queue
+        - name: wazuh-data
               mountPath: /var/ossec/logs
               subPath: logs
 
@@ -73,9 +58,25 @@ spec:
         - name: wazuh-manager
           image: wazuh/wazuh-manager:4.14.2
           imagePullPolicy: IfNotPresent
+
+          # CRITICAL: bypass image init that starts filebeat/s6.
+          # Start Wazuh manager daemons directly.
+          command: ["/bin/sh","-lc"]
+          args:
+            - |
+              set -eux
+              # ensure filebeat never runs in this pod
+              pkill -f filebeat || true
+              rm -f /run/s6/services/filebeat/down || true
+              # start wazuh manager
+              /var/ossec/bin/wazuh-control start
+              # keep container alive and surface logs
+              tail -F /var/ossec/logs/ossec.log
+
           env:
             - name: FILEBEAT_ENABLED
               value: "false"
+
           ports:
             - containerPort: 1514
               protocol: UDP
@@ -85,6 +86,18 @@ spec:
               protocol: TCP
             - containerPort: 55000
               protocol: TCP
+
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -lc
+                - /var/ossec/bin/wazuh-control status | grep -q "wazuh-analysisd is running"
+            initialDelaySeconds: 25
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+
           resources:
             requests:
               cpu: "300m"
@@ -92,6 +105,7 @@ spec:
             limits:
               cpu: "1000m"
               memory: "2500Mi"
+
           volumeMounts:
             - name: wazuh-data
               mountPath: /var/ossec/logs
@@ -140,20 +154,15 @@ spec:
           volumeMounts:
             - name: wazuh-data
               mountPath: /var/ossec/logs
-              subPath: logs
+          subPath: logs
+        - name: vector-config
+          mountPath: /etc/vector/vector.yaml
+          subPath: vector.yaml
+          readOnly: true
+        - name: vector-data
+          mountPath: /var/lib/vector
 
-            # Mount the single vector.yaml file exactly where Vector expects it
-            - name: vector-config
-              mountPath: /etc/vector/vector.yaml
-              subPath: vector.yaml
-              readOnly: true
-
-            # Persist Vector data_dir (recommended for file source checkpoints)
-            - name: vector-data
-              mountPath: /var/lib/vector
-
-      # ✅ volumes MUST be here (under spec.template.spec)
-      volumes:
+    volumes:
         - name: vector-config
           configMap:
             name: wazuh-vector-config
@@ -169,14 +178,12 @@ spec:
         resources:
           requests:
             storage: 15Gi
-
-    # ✅ This fixes your missing vector-data PVC
-    - metadata:
-        name: vector-data
-        labels:
+          -metadata:
+            name: vector-data
+            labels:
           app: wazuh-manager
       spec:
         accessModes: ["ReadWriteOnce"]
         resources:
           requests:
-            storage: 2Gi
+          storage: 2Gi
