@@ -16,32 +16,52 @@ spec:
       labels:
         app: wazuh-manager
       annotations:
-        vector-config-rev: "8"
+        # bump this number any time you change Vector config or init logic
+        vector-config-rev: "7"
     spec:
       serviceAccountName: wazuh-manager
       terminationGracePeriodSeconds: 60
 
-      # LAB: run as root to remove permission blockers immediately.
+      # Run as root so init + Wazuh can set permissions correctly on PVC/subPath mounts
       securityContext:
         runAsUser: 0
         runAsGroup: 0
         fsGroup: 0
 
       initContainers:
-        - name: init-wazuh-perms
+        - name: init-wazuh-dirs
           image: busybox:1.36
           command: ["/bin/sh","-lc"]
           args:
             - |
-              set -eux
+              set -e
+
+              # Create required runtime directories inside mounted subPaths
               mkdir -p /var/ossec/var/run
-              mkdir -p /var/ossec/queue/{sockets,alerts,db,logcollector}
+              mkdir -p /var/ossec/queue/sockets
+              mkdir -p /var/ossec/queue/alerts
+              mkdir -p /var/ossec/queue/db
               mkdir -p /var/ossec/logs/alerts
-              touch /var/ossec/logs/alerts/alerts.json
+
+              # Ensure alerts.json exists but DO NOT truncate it (prevents silent loss)
+              if [ ! -f /var/ossec/logs/alerts/alerts.json ]; then
+                touch /var/ossec/logs/alerts/alerts.json
+              fi
+
+              # Permissions (Wazuh daemons need write access)
               chmod -R 0775 /var/ossec/var /var/ossec/queue /var/ossec/logs || true
               chmod 0666 /var/ossec/logs/alerts/alerts.json || true
+
+              # CRITICAL: ownership for Wazuh user on PVC-mounted paths
+              # Wazuh containers usually have user/group "wazuh"
+              chown -R wazuh:wazuh /var/ossec/var /var/ossec/queue /var/ossec/logs || true
+
+              echo "=== ownership/perms check ==="
+              ls -la /var/ossec/var || true
               ls -la /var/ossec/var/run || true
+              ls -la /var/ossec/queue || true
               ls -la /var/ossec/queue/sockets || true
+              ls -la /var/ossec/logs || true
               ls -la /var/ossec/logs/alerts || true
           volumeMounts:
             - name: wazuh-data
@@ -49,8 +69,8 @@ spec:
               subPath: var
             - name: wazuh-data
               mountPath: /var/ossec/queue
-          subPath: queue
-        - name: wazuh-data
+              subPath: queue
+            - name: wazuh-data
               mountPath: /var/ossec/logs
               subPath: logs
 
@@ -58,25 +78,9 @@ spec:
         - name: wazuh-manager
           image: wazuh/wazuh-manager:4.14.2
           imagePullPolicy: IfNotPresent
-
-          # CRITICAL: bypass image init that starts filebeat/s6.
-          # Start Wazuh manager daemons directly.
-          command: ["/bin/sh","-lc"]
-          args:
-            - |
-              set -eux
-              # ensure filebeat never runs in this pod
-              pkill -f filebeat || true
-              rm -f /run/s6/services/filebeat/down || true
-              # start wazuh manager
-              /var/ossec/bin/wazuh-control start
-              # keep container alive and surface logs
-              tail -F /var/ossec/logs/ossec.log
-
           env:
             - name: FILEBEAT_ENABLED
               value: "false"
-
           ports:
             - containerPort: 1514
               protocol: UDP
@@ -86,18 +90,6 @@ spec:
               protocol: TCP
             - containerPort: 55000
               protocol: TCP
-
-          readinessProbe:
-            exec:
-              command:
-                - sh
-                - -lc
-                - /var/ossec/bin/wazuh-control status | grep -q "wazuh-analysisd is running"
-            initialDelaySeconds: 25
-            periodSeconds: 20
-            timeoutSeconds: 5
-            failureThreshold: 6
-
           resources:
             requests:
               cpu: "300m"
@@ -105,7 +97,6 @@ spec:
             limits:
               cpu: "1000m"
               memory: "2500Mi"
-
           volumeMounts:
             - name: wazuh-data
               mountPath: /var/ossec/logs
@@ -123,25 +114,13 @@ spec:
         - name: vector
           image: timberio/vector:0.53.0-alpine
           args:
-            - "--config-yaml"
+            - "--config"
             - "/etc/vector/vector.yaml"
-          ports:
-            - name: vector-api
-              containerPort: 8686
-              protocol: TCP
           readinessProbe:
             exec:
               command: ["sh","-lc","vector validate --config-yaml /etc/vector/vector.yaml"]
             initialDelaySeconds: 5
             periodSeconds: 20
-            timeoutSeconds: 5
-            failureThreshold: 3
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8686
-            initialDelaySeconds: 15
-            periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 3
           resources:
@@ -154,15 +133,13 @@ spec:
           volumeMounts:
             - name: wazuh-data
               mountPath: /var/ossec/logs
-          subPath: logs
-        - name: vector-config
-          mountPath: /etc/vector/vector.yaml
-          subPath: vector.yaml
-          readOnly: true
-        - name: vector-data
-          mountPath: /var/lib/vector
+              subPath: logs
+            - name: vector-config
+              mountPath: /etc/vector
+            - name: vector-data
+              mountPath: /var/lib/vector
 
-    volumes:
+      volumes:
         - name: vector-config
           configMap:
             name: wazuh-vector-config
@@ -178,12 +155,13 @@ spec:
         resources:
           requests:
             storage: 15Gi
-          -metadata:
-            name: vector-data
-            labels:
+
+    - metadata:
+        name: vector-data
+        labels:
           app: wazuh-manager
       spec:
         accessModes: ["ReadWriteOnce"]
         resources:
           requests:
-          storage: 2Gi
+            storage: 2Gi
