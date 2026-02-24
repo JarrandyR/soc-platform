@@ -9,7 +9,7 @@ sources:
     type: file
     include:
       - /var/ossec/logs/alerts/alerts.json
-    read_from: end
+    read_from: beginning
     ignore_not_found: true
     fingerprint:
       strategy: device_and_inode
