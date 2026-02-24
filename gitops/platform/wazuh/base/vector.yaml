@@ -1,7 +1,7 @@
 # gitops/platform/wazuh/base/vector.yaml
 # Vector 0.53.x
-# Purpose: Read Wazuh alerts.json, enrich events with risk_score + severity_bucket,
-#          and ship to OpenSearch.
+# Wazuh -> Vector -> OpenSearch
+# Adds: @timestamp, risk_score, severity_bucket, soc.*
 
 data_dir: /var/lib/vector
 
@@ -9,7 +9,7 @@ api:
   enabled: true
   address: 0.0.0.0:8686
 
-  sources:
+sources:
   wazuh_alerts_file:
     type: file
     include:
@@ -18,43 +18,69 @@ api:
     ignore_older_secs: 86400
     fingerprint:
       strategy: checksum
-    multiline:
-      # alerts.json is newline-delimited JSON; keep multiline disabled behavior
-      # by using the default single-line handling.
-      # (No multiline config needed; left here intentionally blank)
 
 transforms:
-  wazuh_parse_and_risk:
+  wazuh_enrich:
     type: remap
     inputs:
       - wazuh_alerts_file
     source: |
-      # --- Parse JSON safely ---
+      # ----------------------------
+      # 1) Parse newline JSON safely
+      # ----------------------------
       . = parse_json!(.message)
 
-      # --- Normalize common fields (optional but helpful) ---
-      # Some Wazuh alerts put fields under different paths; we keep it defensive.
+      # ----------------------------
+      # 2) Ensure @timestamp exists
+      # ----------------------------
+      # Wazuh typically provides "timestamp". We try common formats and fall back to now().
+      if !exists(.["@timestamp"]) {
+        ts = to_string(.timestamp) ?? null
+
+        if ts != null {
+          # Try a few common timestamp patterns
+          dt =
+            parse_timestamp(ts, "%+") ??
+            parse_timestamp(ts, "%Y-%m-%dT%H:%M:%S%.f%z") ??
+            parse_timestamp(ts, "%Y-%m-%dT%H:%M:%S%z") ??
+            parse_timestamp(ts, "%Y-%m-%d %H:%M:%S") ??
+            null
+
+          if dt != null {
+            .["@timestamp"] = dt
+          }
+        }
+
+        if !exists(.["@timestamp"]) {
+          .["@timestamp"] = now()
+        }
+      }
+
+      # ---------------------------------------
+      # 3) Pull core fields (defensive/default)
+      # ---------------------------------------
       level = to_int(.rule.level) ?? 0
       rule_id = to_string(.rule.id) ?? "unknown"
       description = to_string(.rule.description) ?? ""
+
       agent_name = to_string(.agent.name) ?? to_string(.agent) ?? "unknown"
-      host_name = to_string(.host.name) ?? to_string(.hostname) ?? agent_name
+      host_name  = to_string(.host.name) ?? to_string(.hostname) ?? agent_name
 
-      # --- Base score from Wazuh rule.level (0-15) -> (0-100) ---
-      # 15 -> 100, 10 -> 67, 5 -> 33
-      base = (level * 100) / 15
-
-      # --- Signal boosts (lightweight heuristics) ---
-      boost = 0
-
-      # If MITRE mapping exists, it's usually a higher-quality detection signal
-      if exists(.rule.mitre) { boost += 8 }
-      if exists(.rule.mitre.technique) { boost += 6 }
-
-      # Common high-risk themes from groups/tags (best-effort)
       groups = .rule.groups ?? []
       groups_str = downcase!(join!(groups, " "))
 
+      # ----------------------------
+      # 4) Compute risk_score (0-100)
+      # ----------------------------
+      # Base from Wazuh rule.level (0-15) -> (0-100)
+      base = (level * 100) / 15
+      boost = 0
+
+      # MITRE present usually means better signal
+      if exists(.rule.mitre) { boost += 8 }
+      if exists(.rule.mitre.technique) { boost += 6 }
+
+      # Heuristic boosts from groups
       if contains(groups_str, "authentication") { boost += 6 }
       if contains(groups_str, "auth") { boost += 4 }
       if contains(groups_str, "malware") { boost += 10 }
@@ -63,20 +89,23 @@ transforms:
       if contains(groups_str, "syscheck") { boost += 5 }
       if contains(groups_str, "privilege") { boost += 12 }
       if contains(groups_str, "sudo") { boost += 10 }
-      if contains(groups_str, "windows") && contains(groups_str, "defender") { boost += 6 }
+      if contains(groups_str, "ransomware") { boost += 15 }
+      if contains(groups_str, "persistence") { boost += 8 }
+      if contains(groups_str, "lateral") { boost += 10 }
 
-      # If the rule is already a high Wazuh level, give a small additional nudge
+      # Nudge very high rule.level
       if level >= 12 { boost += 10 }
       if level >= 14 { boost += 10 }
 
-      # --- Compute risk_score and clamp 0..100 ---
       risk = to_int(base + boost) ?? 0
       if risk > 100 { risk = 100 }
       if risk < 0 { risk = 0 }
 
       .risk_score = risk
 
-      # --- severity_bucket derived from risk_score ---
+      # ----------------------------
+      # 5) severity_bucket
+      # ----------------------------
       if .risk_score >= 80 {
         .severity_bucket = "Critical"
       } else if .risk_score >= 60 {
@@ -87,22 +116,22 @@ transforms:
         .severity_bucket = "Low"
       }
 
-      # --- Helpful normalized fields for dashboards/aggregations ---
+      # -----------------------------------
+      # 6) Normalized SOC helper fields
+      # -----------------------------------
       .soc = .soc ?? {}
       .soc.rule_id = rule_id
       .soc.rule_level = level
       .soc.description = description
       .soc.agent_name = agent_name
       .soc.host_name = host_name
-
-      # Keep original timestamp if present; otherwise Vector will add one.
-      # (No change needed)
+      .soc.groups = groups
 
 sinks:
   opensearch_wazuh_alerts:
     type: opensearch
     inputs:
-      - wazuh_parse_and_risk
+      - wazuh_enrich
     endpoints:
       - https://opensearch.platform-opensearch.svc.cluster.local:9200
     index: "wazuh-alerts-%Y.%m.%d"
