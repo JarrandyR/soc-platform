@@ -109,13 +109,25 @@ spec:
         - name: vector
           image: timberio/vector:0.53.0-alpine
           args:
-            - "--config"
+            - "--config-yaml"
             - "/etc/vector/vector.yaml"
+          ports:
+            - name: vector-api
+              containerPort: 8686
+              protocol: TCP
           readinessProbe:
             exec:
               command: ["sh","-lc","vector validate --config-yaml /etc/vector/vector.yaml"]
             initialDelaySeconds: 5
             periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8686
+            initialDelaySeconds: 15
+            periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 3
           resources:
@@ -129,20 +141,23 @@ spec:
             - name: wazuh-data
               mountPath: /var/ossec/logs
               subPath: logs
-            - name: vector-config
-              mountPath: /etc/vector
-            - name: vector-data
-              mountPath: /vector-data-dir
 
+            # Mount the single vector.yaml file exactly where Vector expects it
+            - name: vector-config
+              mountPath: /etc/vector/vector.yaml
+              subPath: vector.yaml
+              readOnly: true
+
+            # Persist Vector data_dir (recommended for file source checkpoints)
+            - name: vector-data
+              mountPath: /var/lib/vector
+
+      # ✅ volumes MUST be here (under spec.template.spec)
       volumes:
         - name: vector-config
           configMap:
             name: wazuh-vector-config
             optional: false
-
-        - name: vector-data
-          persistentVolumeClaim:
-            claimName: vector-data
 
   volumeClaimTemplates:
     - metadata:
@@ -154,3 +169,14 @@ spec:
         resources:
           requests:
             storage: 15Gi
+
+    # ✅ This fixes your missing vector-data PVC
+    - metadata:
+        name: vector-data
+        labels:
+          app: wazuh-manager
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi

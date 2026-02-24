@@ -1,18 +1,18 @@
-﻿apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-namespace: platform-wazuh
+﻿# gitops/platform/wazuh/base/kustomization.yaml
 
-resources:
-  - serviceaccount.yaml
-  - rbac.yaml
-  - service.yaml
-  - statefulset.yaml
+ apiVersion: kustomize.config.k8s.io/v1beta1
+ kind: Kustomization
 
+ resources:
+ - statefulset.yaml
+ - service.yaml
+ - pvc.yaml
+ # add any other wazuh resources you already have here
 
-configMapGenerator:
+ configMapGenerator:
   - name: wazuh-vector-config
     files:
       - vector.yaml=vector.yaml
 
-generatorOptions:
-  disableNameSuffixHash: true
+ generatorOptions:
+ disableNameSuffixHash: true

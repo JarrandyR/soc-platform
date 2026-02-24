@@ -1,47 +1,122 @@
+# gitops/platform/wazuh/base/vector.yaml
+# Vector 0.53.x
+# Purpose: Read Wazuh alerts.json, enrich events with risk_score + severity_bucket,
+#          and ship to OpenSearch.
+
+data_dir: /var/lib/vector
+
 api:
   enabled: true
   address: 0.0.0.0:8686
 
-data_dir: /vector-data-dir
-
-sources:
-  wazuh_alerts:
+  sources:
+  wazuh_alerts_file:
     type: file
     include:
       - /var/ossec/logs/alerts/alerts.json
-    read_from: end
-    ignore_not_found: true
+    read_from: beginning
+    ignore_older_secs: 86400
     fingerprint:
-      strategy: device_and_inode
+      strategy: checksum
+    multiline:
+      # alerts.json is newline-delimited JSON; keep multiline disabled behavior
+      # by using the default single-line handling.
+      # (No multiline config needed; left here intentionally blank)
 
 transforms:
-  parse_json:
+  wazuh_parse_and_risk:
     type: remap
     inputs:
-      - wazuh_alerts
+      - wazuh_alerts_file
     source: |
+      # --- Parse JSON safely ---
       . = parse_json!(.message)
 
+      # --- Normalize common fields (optional but helpful) ---
+      # Some Wazuh alerts put fields under different paths; we keep it defensive.
+      level = to_int(.rule.level) ?? 0
+      rule_id = to_string(.rule.id) ?? "unknown"
+      description = to_string(.rule.description) ?? ""
+      agent_name = to_string(.agent.name) ?? to_string(.agent) ?? "unknown"
+      host_name = to_string(.host.name) ?? to_string(.hostname) ?? agent_name
+
+      # --- Base score from Wazuh rule.level (0-15) -> (0-100) ---
+      # 15 -> 100, 10 -> 67, 5 -> 33
+      base = (level * 100) / 15
+
+      # --- Signal boosts (lightweight heuristics) ---
+      boost = 0
+
+      # If MITRE mapping exists, it's usually a higher-quality detection signal
+      if exists(.rule.mitre) { boost += 8 }
+      if exists(.rule.mitre.technique) { boost += 6 }
+
+      # Common high-risk themes from groups/tags (best-effort)
+      groups = .rule.groups ?? []
+      groups_str = downcase!(join!(groups, " "))
+
+      if contains(groups_str, "authentication") { boost += 6 }
+      if contains(groups_str, "auth") { boost += 4 }
+      if contains(groups_str, "malware") { boost += 10 }
+      if contains(groups_str, "virus") { boost += 10 }
+      if contains(groups_str, "rootcheck") { boost += 8 }
+      if contains(groups_str, "syscheck") { boost += 5 }
+      if contains(groups_str, "privilege") { boost += 12 }
+      if contains(groups_str, "sudo") { boost += 10 }
+      if contains(groups_str, "windows") && contains(groups_str, "defender") { boost += 6 }
+
+      # If the rule is already a high Wazuh level, give a small additional nudge
+      if level >= 12 { boost += 10 }
+      if level >= 14 { boost += 10 }
+
+      # --- Compute risk_score and clamp 0..100 ---
+      risk = to_int(base + boost) ?? 0
+      if risk > 100 { risk = 100 }
+      if risk < 0 { risk = 0 }
+
+      .risk_score = risk
+
+      # --- severity_bucket derived from risk_score ---
+      if .risk_score >= 80 {
+        .severity_bucket = "Critical"
+      } else if .risk_score >= 60 {
+        .severity_bucket = "High"
+      } else if .risk_score >= 30 {
+        .severity_bucket = "Medium"
+      } else {
+        .severity_bucket = "Low"
+      }
+
+      # --- Helpful normalized fields for dashboards/aggregations ---
+      .soc = .soc ?? {}
+      .soc.rule_id = rule_id
+      .soc.rule_level = level
+      .soc.description = description
+      .soc.agent_name = agent_name
+      .soc.host_name = host_name
+
+      # Keep original timestamp if present; otherwise Vector will add one.
+      # (No change needed)
+
 sinks:
-  opensearch_all:
-    type: elasticsearch
+  opensearch_wazuh_alerts:
+    type: opensearch
     inputs:
-      - parse_json
+      - wazuh_parse_and_risk
     endpoints:
-      - http://opensearch.platform-opensearch.svc.cluster.local:9200
-    api_version: v7
-    mode: bulk
-    compression: gzip
+      - https://opensearch.platform-opensearch.svc.cluster.local:9200
+    index: "wazuh-alerts-%Y.%m.%d"
     bulk:
-      index: "wazuh-alerts-%Y.%m.%d"
-    healthcheck: true
+      action: index
+    auth:
+      strategy: basic
+      user: "${OPENSEARCH_USER}"
+      password: "${OPENSEARCH_PASS}"
+    tls:
+      verify_certificate: false
+      verify_hostname: false
+    encoding:
+      codec: json
     request:
       timeout_secs: 30
-      retry_attempts: 10
-      retry_backoff_secs: 2
-    batch:
-      max_events: 1000
-      timeout_secs: 1
-    buffer:
-      type: disk
-      max_size: 268435488
+    healthcheck: true
