@@ -6,3 +6,6 @@ vector.yaml
 pvc-finalizers-clear.json
 *.tmp
 *.bak
+_tmp_vector_cm.yaml
+wazuh-settings.json
+wazuh-template.json
