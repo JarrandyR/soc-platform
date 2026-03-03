@@ -1,0 +1,29 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: platform-wazuh
+
+resources:
+  - ..\..\base\
+
+patches:
+  - target:
+      group: apps
+      version: v1
+      kind: StatefulSet
+      name: wazuh-manager
+    path: wazuh-manager-initcontainer.patch.yaml
+
+  - target:
+      group: apps
+      version: v1
+      kind: StatefulSet
+      name: wazuh-manager
+    path: wazuh-manager-disable-filebeat.patch.yaml
+
+  - target:
+      group: apps
+      version: v1
+      kind: StatefulSet
+      name: wazuh-manager
+    path: wazuh-manager-remove-legacy-init.json

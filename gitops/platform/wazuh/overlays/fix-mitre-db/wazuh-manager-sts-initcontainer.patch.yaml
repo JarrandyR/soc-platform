@@ -1,0 +1,66 @@
+﻿apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: wazuh-manager
+spec:
+  template:
+    spec:
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+
+      initContainers:
+        - name: init-wazuh-runtime
+          $patch: delete
+
+        - name: init-wazuh-runtime
+          image: wazuh/wazuh-manager:4.14.2
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          command: ["/bin/sh","-lc"]
+          args:
+            - |
+              set -eux
+              YEAR="$(date +%Y)"
+              MON="$(date +%b)"
+
+              mkdir -p /var/ossec/var/run /var/ossec/var/db
+              mkdir -p /var/ossec/queue/sockets /var/ossec/queue/alerts /var/ossec/queue/db
+              mkdir -p /var/ossec/queue/fim/db /var/ossec/queue/rids /var/ossec/queue/fts
+              mkdir -p /var/ossec/queue/agent-info /var/ossec/queue/agent-groups
+              mkdir -p /var/ossec/queue/tasks/task /var/ossec/queue/tasks/tmp /var/ossec/queue/tasks/upgrade
+
+              [ -f /var/ossec/queue/rids/sender_counter ] || touch /var/ossec/queue/rids/sender_counter
+              [ -f /var/ossec/queue/fts/hostinfo ] || touch /var/ossec/queue/fts/hostinfo
+
+              mkdir -p /var/ossec/logs/alerts /var/ossec/logs/archives
+              mkdir -p "/var/ossec/logs/firewall/${YEAR}/${MON}"
+
+              [ -f /var/ossec/logs/active-responses.log ] || touch /var/ossec/logs/active-responses.log
+              [ -f /var/ossec/logs/alerts/alerts.json ] || touch /var/ossec/logs/alerts/alerts.json
+
+              chown -R wazuh:wazuh /var/ossec/var /var/ossec/queue /var/ossec/logs || true
+              chmod -R g+rwX /var/ossec/var /var/ossec/queue /var/ossec/logs || true
+              chmod 0666 /var/ossec/logs/alerts/alerts.json || true
+
+              su -s /bin/sh -c "touch /var/ossec/var/db/.writetest && rm -f /var/ossec/var/db/.writetest" wazuh
+              su -s /bin/sh -c "test -f /var/ossec/var/db/mitre.db || : > /var/ossec/var/db/mitre.db" wazuh
+              chown wazuh:wazuh /var/ossec/var/db/mitre.db
+              chmod 0664 /var/ossec/var/db/mitre.db
+
+              echo "OK: Wazuh runtime dirs + perms seeded"
+
+          volumeMounts:
+            - name: wazuh-data
+              mountPath: /var/ossec/var
+              subPath: var
+            - name: wazuh-data
+              mountPath: /var/ossec/queue
+              subPath: queue
+            - name: wazuh-data
+              mountPath: /var/ossec/logs
+              subPath: logs

@@ -3,22 +3,28 @@ kind: Service
 metadata:
   name: wazuh-manager
   namespace: platform-wazuh
+  labels:
+    app: wazuh-manager
 spec:
+  type: ClusterIP
   selector:
     app: wazuh-manager
-  type: ClusterIP
   ports:
-    - name: agent-udp
-      port: 1514
-      targetPort: 1514
-      protocol: UDP
-    - name: agent-tcp
+    - name: agents-tcp
       port: 1514
       targetPort: 1514
       protocol: TCP
-    - name: enrollment
+    - name: agents-udp
+      port: 1514
+      targetPort: 1514
+      protocol: UDP
+    - name: registration
       port: 1515
       targetPort: 1515
+      protocol: TCP
+    - name: cluster
+      port: 1516
+      targetPort: 1516
       protocol: TCP
     - name: api
       port: 55000

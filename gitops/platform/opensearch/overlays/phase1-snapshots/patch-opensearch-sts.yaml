@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: opensearch
+  namespace: platform-opensearch
+spec:
+  template:
+    spec:
+      volumes:
+        - name: snapshots
+          persistentVolumeClaim:
+            claimName: opensearch-snapshots-pvc
+      containers:
+        - name: opensearch
+          volumeMounts:
+            - name: snapshots
+              mountPath: /snapshots

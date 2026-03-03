@@ -1,0 +1,15 @@
+﻿apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: wazuh-manager
+spec:
+  template:
+    spec:
+      volumes:
+        - name: filebeat-disabled
+          emptyDir: {}
+      containers:
+        - name: wazuh-manager
+          volumeMounts:
+            - name: filebeat-disabled
+              mountPath: /etc/services.d/filebeat

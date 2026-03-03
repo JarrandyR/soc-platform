@@ -1,0 +1,20 @@
+﻿apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: opensearch
+  namespace: platform-opensearch
+spec:
+  template:
+    spec:
+      containers:
+      - name: opensearch
+        volumeMounts:
+        # Remove the "mount whole dir" pattern if it exists in your base
+        - name: config
+          mountPath: /usr/share/opensearch/config
+          $patch: delete
+
+        # Mount ONLY the file so built-in certs in the image are visible again
+        - name: config
+          mountPath: /usr/share/opensearch/config/opensearch.yml
+          subPath: opensearch.yml

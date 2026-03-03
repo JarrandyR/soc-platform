@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opensearch-snapshot-runbook
+  namespace: platform-opensearch
+  labels:
+    app.kubernetes.io/name: opensearch
+    app.kubernetes.io/component: snapshots
+data:
+  SNAPSHOT_RUNBOOK.md: |
+    # OpenSearch Snapshots — Production Runbook
+
+    ## Daily automation
+    - CronJob: opensearch-daily-snapshot
+    - Schedule: 03:15 UTC
+    - Repo: soc-fs-repo
+    - Location: /snapshots (fs repo)
+
+    ## Verify
+    - Repo: GET /_snapshot/soc-fs-repo?pretty
+    - List: GET /_cat/snapshots/soc-fs-repo?v&s=start_epoch:desc
+    - Health: GET /_cluster/health?pretty
+
+    ## Restore (full)
+    1) Stop ingest components first.
+    2) POST /_snapshot/soc-fs-repo/<snapshot_name>/_restore
+       { "indices":"*", "ignore_unavailable":true, "include_global_state":true }
+    3) Watch: GET /_cat/recovery?v ; GET /_cluster/health?pretty
+    4) Resume ingest and validate.
+
+    ## Hard requirements
+    - OpenSearch must mount /snapshots
+    - opensearch.yml must include: path.repo: ["/snapshots"]

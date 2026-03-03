@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vector-config
+data:
+  vector.yaml: |
+    sources:
+      wazuh_alerts_json:
+        type: file
+        include:
+          - /var/ossec/logs/alerts/alerts.json
+        read_from: beginning
+
+    sinks:
+      console:
+        type: console
+        inputs: ["wazuh_alerts_json"]
+        encoding:
+          codec: json

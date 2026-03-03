@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: opensearch-snapshot-ops
+  namespace: platform-opensearch
+  labels:
+    app.kubernetes.io/name: opensearch
+    app.kubernetes.io/component: snapshots

@@ -2,50 +2,143 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: opensearch
+  namespace: platform-opensearch
+  labels:
+    app: opensearch
 spec:
-  serviceName: opensearch
   replicas: 1
+  serviceName: opensearch
   selector:
     matchLabels:
       app: opensearch
+
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      partition: 0
+
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+
   template:
     metadata:
       labels:
         app: opensearch
     spec:
       terminationGracePeriodSeconds: 60
+
+      volumes:
+        - name: os-config
+          emptyDir: {}
+        - name: config
+          configMap:
+            name: opensearch-config
+        - name: opensearch-tls
+          secret:
+            secretName: opensearch-tls
+        - name: snapshots
+          persistentVolumeClaim:
+            claimName: opensearch-snapshots
+
+      initContainers:
+        - name: init-opensearch-security
+          image: opensearchproject/opensearch:2.11.1
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash","-lc"]
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+          env:
+            - name: OPENSEARCH_JAVA_OPTS
+              value: "-Xms1g -Xmx1g"
+          args:
+            - |
+              set -euo pipefail
+
+              echo "[init] preparing writable config dir..."
+              cp -a /usr/share/opensearch/config/. /work-config/
+
+              echo "[init] writing opensearch.yml from ConfigMap..."
+              cp -f /config-src/opensearch.yml /work-config/opensearch.yml
+
+              PERSIST_DIR="/usr/share/opensearch/data/secconfig"
+              mkdir -p ""
+
+              if [ -d "/opensearch-security" ]; then
+                echo "[init] restoring persisted opensearch-security from PVC..."
+                rm -rf /work-config/opensearch-security || true
+                cp -a "/opensearch-security" /work-config/
+              fi
+
+              if [ ! -d /work-config/opensearch-security ] && [ -d /usr/share/opensearch/config/opensearch-security ]; then
+                echo "[init] found opensearch-security in image config; persisting to PVC..."
+                rm -rf "/opensearch-security" || true
+                cp -a /usr/share/opensearch/config/opensearch-security "/"
+                cp -a /usr/share/opensearch/config/opensearch-security /work-config/
+              fi
+
+              if [ ! -d /work-config/opensearch-security ] && [ -x /usr/share/opensearch/plugins/opensearch-security/tools/install_demo_configuration.sh ]; then
+                echo "[init] opensearch-security missing; running demo installer once, then persisting..."
+                export OPENSEARCH_CONF_DIR=/work-config
+                /usr/share/opensearch/plugins/opensearch-security/tools/install_demo_configuration.sh -y
+                rm -rf "/opensearch-security" || true
+                cp -a /work-config/opensearch-security "/"
+              fi
+
+              if [ ! -d /work-config/opensearch-security ]; then
+                echo "[init][FATAL] opensearch-security still missing after init steps."
+                exit 1
+              fi
+
+              echo "[init] persisted security dir:"
+              ls -lah "" || true
+              echo "[init] done."
+          volumeMounts:
+            - name: os-config
+              mountPath: /work-config
+            - name: config
+              mountPath: /config-src
+              readOnly: true
+            - name: data
+              mountPath: /usr/share/opensearch/data
+            - name: snapshots
+              mountPath: /usr/share/opensearch/backup
+
       containers:
         - name: opensearch
           image: opensearchproject/opensearch:2.11.1
+          imagePullPolicy: IfNotPresent
           env:
             - name: discovery.type
               value: single-node
-            - name: plugins.security.disabled
-              value: "true"
             - name: OPENSEARCH_JAVA_OPTS
-              value: "-Xms512m -Xmx512m"
+              value: "-Xms1g -Xmx1g"
           ports:
-            - containerPort: 9200
-              name: http
-            - containerPort: 9300
-              name: transport
+            - name: http
+              containerPort: 9200
+            - name: transport
+              containerPort: 9300
           resources:
             requests:
-              memory: "512Mi"
-              cpu: "250m"
+              cpu: 500m
+              memory: 1Gi
             limits:
-              memory: "1Gi"
-              cpu: "500m"
+              cpu: 1500m
+              memory: 4Gi
           volumeMounts:
             - name: data
               mountPath: /usr/share/opensearch/data
             - name: config
               mountPath: /usr/share/opensearch/config/opensearch.yml
               subPath: opensearch.yml
-      volumes:
-        - name: config
-          configMap:
-            name: opensearch-config
+            - name: opensearch-tls
+              mountPath: /usr/share/opensearch/config/certs
+              readOnly: true
+            - name: snapshots
+              mountPath: /usr/share/opensearch/backup
+
   volumeClaimTemplates:
     - metadata:
         name: data

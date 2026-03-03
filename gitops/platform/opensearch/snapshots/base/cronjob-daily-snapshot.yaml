@@ -1,0 +1,96 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: opensearch-daily-snapshot
+  namespace: platform-opensearch
+  labels:
+    app.kubernetes.io/name: opensearch
+    app.kubernetes.io/component: snapshots
+spec:
+  schedule: "15 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: opensearch
+            app.kubernetes.io/component: snapshots
+        spec:
+          serviceAccountName: opensearch-snapshot-ops
+          restartPolicy: Never
+          containers:
+            - name: snapshot
+              image: alpine:3.19
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: OPENSEARCH_URL
+                  value: "https://opensearch:9200"
+                - name: REPO_NAME
+                  value: "soc-fs-repo"
+                - name: OS_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: opensearch-admin-credentials
+                      key: username
+                - name: OS_PASS
+                  valueFrom:
+                    secretKeyRef:
+                      name: opensearch-admin-credentials
+                      key: password
+              command: ["/bin/sh","-c"]
+              args:
+                - |
+                  set -euo pipefail
+                  apk add --no-cache curl >/dev/null
+
+                  echo "[DEBUG] OPENSEARCH_URL=${OPENSEARCH_URL}"
+                  echo "[DEBUG] REPO_NAME=${REPO_NAME}"
+                  echo "[DEBUG] OS_USER=${OS_USER}"
+                  # DO NOT print OS_PASS
+
+                  if [ -z "${OPENSEARCH_URL:-}" ]; then
+                    echo "FATAL: OPENSEARCH_URL is empty"
+                    exit 10
+                  fi
+                  if [ -z "${OS_USER:-}" ] || [ -z "${OS_PASS:-}" ]; then
+                    echo "FATAL: OS_USER or OS_PASS is empty (Secret missing/blank)"
+                    exit 11
+                  fi
+
+                  echo "[1/6] Cluster reachable?"
+                  curl -ksS -u "${OS_USER}:${OS_PASS}" "${OPENSEARCH_URL}/_cluster/health?pretty" | sed -n '1,160p'
+
+                  echo "[2/6] Ensure snapshot repo exists (${REPO_NAME})"
+                  if ! curl -ksS -u "${OS_USER}:${OS_PASS}" "${OPENSEARCH_URL}/_snapshot/${REPO_NAME}" >/dev/null 2>&1; then
+                    echo "Repo missing — creating..."
+                    curl -ksS -u "${OS_USER}:${OS_PASS}" -X PUT "${OPENSEARCH_URL}/_snapshot/${REPO_NAME}" \
+                      -H "Content-Type: application/json" \
+                      -d '{ "type":"fs", "settings": { "location":"/snapshots", "compress":true } }' | sed -n '1,220p'
+                  else
+                    echo "Repo exists."
+                  fi
+
+                  echo "[3/6] Verify repo details"
+                  curl -ksS -u "${OS_USER}:${OS_PASS}" "${OPENSEARCH_URL}/_snapshot/${REPO_NAME}?pretty" | sed -n '1,220p'
+
+                  TS="$(date -u +%Y.%m.%d-%H%MZ)"
+                  SNAP="soc-${TS}"
+                  echo "[4/6] Create snapshot: ${SNAP}"
+
+                  curl -ksS -u "${OS_USER}:${OS_PASS}" -X PUT \
+                    "${OPENSEARCH_URL}/_snapshot/${REPO_NAME}/${SNAP}?wait_for_completion=true" \
+                    -H "Content-Type: application/json" \
+                    -d '{ "indices":"*", "ignore_unavailable":true, "include_global_state":true }' | sed -n '1,260p'
+
+                  echo "[5/6] Latest snapshots (top 5)"
+                  curl -ksS -u "${OS_USER}:${OS_PASS}" \
+                    "${OPENSEARCH_URL}/_cat/snapshots/${REPO_NAME}?h=id,status,start_epoch,end_epoch,duration&v&s=start_epoch:desc" \
+                    | head -n 7
+
+                  echo "[6/6] Snapshot detail"
+                  curl -ksS -u "${OS_USER}:${OS_PASS}" \
+                    "${OPENSEARCH_URL}/_snapshot/${REPO_NAME}/${SNAP}?pretty" | sed -n '1,220p'

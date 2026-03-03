@@ -2,21 +2,23 @@
 kind: Role
 metadata:
   name: wazuh-manager
-  namespace: platform-wazuh
+  labels:
+    app: wazuh-manager
 rules:
   - apiGroups: [""]
-    resources: ["pods","services","endpoints"]
-    verbs: ["get","list","watch"]
+    resources: ["pods", "pods/log", "events"]
+    verbs: ["get", "list", "watch"]
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: wazuh-manager
-  namespace: platform-wazuh
+  labels:
+    app: wazuh-manager
 subjects:
   - kind: ServiceAccount
     name: wazuh-manager
-    namespace: platform-wazuh
 roleRef:
   kind: Role
   name: wazuh-manager

@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wazuh-internal-options
+  namespace: platform-wazuh
+data:
+  internal_options.conf: |
+    # internal_options.conf (minimal baseline)
+    auth.timeout_seconds=1
+    auth.timeout_microseconds=0
+    integrator.debug=0
+    analysisd.decoder_order_size=256

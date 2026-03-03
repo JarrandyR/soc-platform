@@ -1,0 +1,41 @@
+﻿cluster.name: soc-platform
+node.name: opensearch-0
+
+network.host: 0.0.0.0
+http.port: 9200
+
+discovery.type: single-node
+
+# IMPORTANT: memlock warning is OK in k3s lab; do NOT block startup on it
+bootstrap.memory_lock: false
+
+# -------------------------
+# OpenSearch Security ON
+# -------------------------
+plugins.security.disabled: false
+plugins.security.allow_default_init_securityindex: true
+
+# Node DN must match your node cert CN
+plugins.security.nodes_dn:
+  - "CN=opensearch"
+
+# Admin DN must match your admin cert CN
+plugins.security.authcz.admin_dn:
+  - "CN=admin"
+
+# ---- Transport TLS (REQUIRED for security plugin) ----
+plugins.security.ssl.transport.pemcert_filepath: certs/node.pem
+plugins.security.ssl.transport.pemkey_filepath: certs/node.key
+plugins.security.ssl.transport.pemtrustedcas_filepath: certs/root-ca.pem
+plugins.security.ssl.transport.enforce_hostname_verification: false
+
+# ---- HTTP TLS (so clients can use https://) ----
+plugins.security.ssl.http.enabled: true
+plugins.security.ssl.http.pemcert_filepath: certs/node.pem
+plugins.security.ssl.http.pemkey_filepath: certs/node.key
+plugins.security.ssl.http.pemtrustedcas_filepath: certs/root-ca.pem
+
+# Allow Security REST API (Dashboards uses this for Security pages)
+plugins.security.restapi.roles_enabled:
+  - "all_access"
+  - "security_rest_api_access"

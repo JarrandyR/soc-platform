@@ -1,0 +1,16 @@
+﻿filebeat.inputs:
+  - type: log
+    enabled: true
+    paths:
+      - /var/ossec/logs/alerts/alerts.json
+    json.keys_under_root: true
+    json.add_error_key: true
+
+# Keep it simple for now: we just need filebeat to stay alive.
+# We’ll wire it to OpenSearch/Vector after the manager is stable.
+output.console:
+  pretty: false
+
+# Reduce unnecessary churn
+queue.mem:
+  events: 4096

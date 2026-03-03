@@ -1,0 +1,60 @@
+﻿apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: opensearch
+  namespace: platform-opensearch
+spec:
+  template:
+    spec:
+      # Writable config volume prepared by initContainer
+      volumes:
+        - name: os-config
+          emptyDir: {}
+
+      initContainers:
+        - name: init-opensearch-security
+          image: opensearchproject/opensearch:2.11.1
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+          command: ["/bin/bash","-lc"]
+          args:
+            - |
+              set -euo pipefail
+
+              echo "[init] preparing /usr/share/opensearch/config into writable volume..."
+              cp -a /usr/share/opensearch/config/. /work-config/
+
+              echo "[init] writing opensearch.yml..."
+              cp -f /config-src/opensearch.yml /work-config/opensearch.yml
+
+              # If demo security assets aren't present, install them into /work-config
+              # install_demo_configuration writes certs + securityconfig and is the fastest stable way in single-node.
+              if [ ! -d /work-config/opensearch-security ] && [ -x /usr/share/opensearch/plugins/opensearch-security/tools/install_demo_configuration.sh ]; then
+                echo "[init] installing demo security configuration..."
+                export OPENSEARCH_CONF_DIR=/work-config
+                /usr/share/opensearch/plugins/opensearch-security/tools/install_demo_configuration.sh -y
+              fi
+
+              echo "[init] config dir contents (cert check):"
+              ls -lah /work-config | egrep 'pem|crt|key|ca|root|admin|node|opensearch-security|yml' || true
+              echo "[init] done."
+          volumeMounts:
+            - name: os-config
+              mountPath: /work-config
+            - name: config
+              mountPath: /config-src
+              readOnly: true
+
+      containers:
+        - name: opensearch
+          volumeMounts:
+            # Remove any existing full-directory config mount if present
+            - name: config
+              mountPath: /usr/share/opensearch/config
+              $patch: delete
+
+            # Mount the prepared config dir
+            - name: os-config
+              mountPath: /usr/share/opensearch/config

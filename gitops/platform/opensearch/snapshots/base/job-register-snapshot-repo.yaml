@@ -1,0 +1,60 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: opensearch-register-snapshot-repo
+  namespace: platform-opensearch
+  labels:
+    app.kubernetes.io/name: opensearch
+    app.kubernetes.io/component: snapshots
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: opensearch
+        app.kubernetes.io/component: snapshots
+    spec:
+      serviceAccountName: opensearch-snapshot-ops
+      restartPolicy: Never
+      containers:
+        - name: register
+          image: alpine:3.19
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: OPENSEARCH_URL
+              value: "https://opensearch:9200"
+            - name: REPO_NAME
+              value: "soc-fs-repo"
+            - name: OS_USER
+              valueFrom:
+                secretKeyRef:
+                  name: opensearch-admin-credentials
+                  key: username
+            - name: OS_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: opensearch-admin-credentials
+                  key: password
+          command: ["/bin/sh","-lc"]
+          args:
+            - |
+              set -euo pipefail
+              apk add --no-cache curl >/dev/null
+
+              echo "[0/3] OPENSEARCH_URL="
+              echo "[1/3] Checking cluster reachable..."
+              curl -ksS -u ":" "/_cluster/health?pretty" | sed -n '1,160p'
+
+              echo "[2/3] Registering snapshot repository: "
+              curl -ksS -u ":" -X PUT "/_snapshot/" \
+                -H "Content-Type: application/json" \
+                -d '{
+                  "type": "fs",
+                  "settings": {
+                    "location": "/snapshots",
+                    "compress": true
+                  }
+                }' | sed -n '1,240p'
+
+              echo "[3/3] Verifying repo exists..."
+              curl -ksS -u ":" "/_snapshot/?pretty" | sed -n '1,260p'

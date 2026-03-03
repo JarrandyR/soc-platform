@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: opensearch-snapshots-pvc
+  namespace: platform-opensearch
+  labels:
+    app.kubernetes.io/name: opensearch
+    app.kubernetes.io/component: snapshots
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 200Gi
+  # storageClassName: local-path

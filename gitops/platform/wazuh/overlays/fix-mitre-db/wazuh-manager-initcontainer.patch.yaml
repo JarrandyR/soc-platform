@@ -1,0 +1,56 @@
+﻿apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: wazuh-manager
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: init-wazuh-perms-mitre
+          image: wazuh/wazuh-manager:4.14.2
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          command: ["/bin/sh","-lc"]
+          args:
+            - |
+              set -e
+              YEAR="$(date +%Y)"
+              MON="$(date +%b)"
+
+              mkdir -p /var/ossec/var/run /var/ossec/var/db
+
+              mkdir -p /var/ossec/queue/tasks/task /var/ossec/queue/tasks/tmp /var/ossec/queue/tasks/upgrade
+
+              # logcollector state (THIS is why logcollector is down)
+              mkdir -p /var/ossec/queue/logcollector
+              [ -f /var/ossec/queue/logcollector/file_status.json ] || echo '{}' > /var/ossec/queue/logcollector/file_status.json
+
+              mkdir -p /var/ossec/logs/alerts /var/ossec/logs/archives
+              mkdir -p "/var/ossec/logs/firewall/${YEAR}/${MON}"
+
+              [ -f /var/ossec/logs/alerts/alerts.json ] || touch /var/ossec/logs/alerts/alerts.json
+              [ -f /var/ossec/logs/active-responses.log ] || touch /var/ossec/logs/active-responses.log
+              [ -f /var/ossec/var/db/mitre.db ] || touch /var/ossec/var/db/mitre.db
+
+              chown -R wazuh:wazuh /var/ossec/var /var/ossec/queue /var/ossec/logs 2>/dev/null || true
+              chmod -R g+rwX /var/ossec/var /var/ossec/queue /var/ossec/logs 2>/dev/null || true
+              chmod 0666 /var/ossec/logs/alerts/alerts.json 2>/dev/null || true
+              chown wazuh:wazuh /var/ossec/var/db/mitre.db 2>/dev/null || true
+              chmod 0664 /var/ossec/var/db/mitre.db 2>/dev/null || true
+
+              echo "OK: init seeded dirs + mitre.db + logcollector state"
+
+          volumeMounts:
+            - name: wazuh-data
+              mountPath: /var/ossec/var
+              subPath: var
+            - name: wazuh-data
+              mountPath: /var/ossec/queue
+              subPath: queue
+            - name: wazuh-data
+              mountPath: /var/ossec/logs
+              subPath: logs

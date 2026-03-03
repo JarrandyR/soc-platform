@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: wazuh-manager-min
+  namespace: platform-wazuh
+spec:
+  serviceName: wazuh-manager-min
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wazuh-manager-min
+  template:
+    metadata:
+      labels:
+        app: wazuh-manager-min
+    spec:
+      terminationGracePeriodSeconds: 60
+
+      containers:
+        - name: wazuh-manager
+          image: wazuh/wazuh-manager:4.14.2
+          imagePullPolicy: IfNotPresent
+
+          env:
+            - name: API_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: wazuh-api-cred
+                  key: username
+            - name: API_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: wazuh-api-cred
+                  key: password
+
+          ports:
+            - containerPort: 1514
+              name: agents-events
+            - containerPort: 1515
+              name: registration
+            - containerPort: 1516
+              name: cluster
+            - containerPort: 55000
+              name: api
+
+          readinessProbe:
+            tcpSocket:
+              port: 55000
+            initialDelaySeconds: 90
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 18
+
+          livenessProbe:
+            tcpSocket:
+              port: 55000
+            initialDelaySeconds: 180
+            periodSeconds: 20
+            timeoutSeconds: 2
+            failureThreshold: 6
+
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
