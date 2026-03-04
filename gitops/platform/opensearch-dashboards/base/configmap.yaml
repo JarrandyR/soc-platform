@@ -13,3 +13,5 @@ data:
     opensearch.password: "kibanaserver"
 
     opensearch.requestHeadersWhitelist: [authorization, securitytenant]
+
+    opensearch_security.cookie.secure: false
