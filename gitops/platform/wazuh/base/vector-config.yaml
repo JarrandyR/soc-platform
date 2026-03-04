@@ -4,6 +4,10 @@ metadata:
   name: vector-config
 data:
   vector.yaml: |
+    api:
+      enabled: true
+      address: 127.0.0.1:8686
+
     sources:
       wazuh_alerts_json:
         type: file
@@ -12,8 +16,15 @@ data:
         read_from: beginning
 
     sinks:
-      console:
-        type: console
-        inputs: ["wazuh_alerts_json"]
-        encoding:
-          codec: json
+      opensearch_wazuh_alerts:
+        type: elasticsearch
+        inputs:
+          - wazuh_alerts_json
+        endpoints:
+          - "https://opensearch.platform-opensearch.svc.cluster.local:9200"
+        bulk:
+          index: "wazuh-alerts-%Y.%m.%d"
+        tls:
+          ca_file: /etc/vector/certs/root-ca.pem
+          verify_certificate: true
+          verify_hostname: true
