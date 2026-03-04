@@ -64,7 +64,7 @@ spec:
               cp -f /config-src/opensearch.yml /work-config/opensearch.yml
 
               PERSIST_DIR="/usr/share/opensearch/data/secconfig"
-              mkdir -p ""
+              mkdir -p /opensearch-security
 
               if [ -d "/opensearch-security" ]; then
                 echo "[init] restoring persisted opensearch-security from PVC..."
@@ -93,7 +93,7 @@ spec:
               fi
 
               echo "[init] persisted security dir:"
-              ls -lah "" || true
+              ls -lah /opensearch-security || true
               echo "[init] done."
           volumeMounts:
             - name: os-config
