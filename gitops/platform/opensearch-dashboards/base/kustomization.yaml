@@ -5,3 +5,5 @@ namespace: platform-opensearch
 
 resources:
   - dashboards.yaml
+
+  - configmap.yaml
