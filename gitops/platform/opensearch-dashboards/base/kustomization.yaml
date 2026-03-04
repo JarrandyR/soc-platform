@@ -7,3 +7,5 @@ resources:
   - dashboards.yaml
 
   - configmap.yaml
+
+  - ingress.yaml
