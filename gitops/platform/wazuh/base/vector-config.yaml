@@ -6,7 +6,7 @@ data:
   vector.yaml: |
     api:
       enabled: true
-      address: 127.0.0.1:8686
+      address: 0.0.0.0:8686
 
     sources:
       wazuh_alerts_json:
