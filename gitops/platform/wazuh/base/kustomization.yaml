@@ -4,7 +4,6 @@ kind: Kustomization
 namespace: platform-wazuh
 
 resources:
-  - namespace.yaml
   - serviceaccount.yaml
   - rbac.yaml
   - secret.yaml
