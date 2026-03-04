@@ -156,7 +156,7 @@ spec:
       volumes:
         - name: vector-config
           configMap:
-            name: wazuh-vector-config
+            name: vector-config
             optional: false
         - name: vector-data
           persistentVolumeClaim:
