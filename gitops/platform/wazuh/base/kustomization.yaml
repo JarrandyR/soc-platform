@@ -10,5 +10,6 @@ resources:
   - service.yaml
   - configmap-wazuh-manager-config.yaml
   - vector-config.yaml
+  - vector-certs.secret.yaml
   - statefulset.yaml
   - vector-data-pvc.yaml

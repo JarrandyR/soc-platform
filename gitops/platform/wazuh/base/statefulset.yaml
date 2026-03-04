@@ -149,7 +149,11 @@ spec:
               mountPath: /var/ossec/logs
               subPath: logs
             - name: vector-config
-              mountPath: /etc/vector
+              mountPath: /etc/vector/vector.yaml
+              subPath: vector.yaml
+            - name: vector-certs
+              mountPath: /etc/vector/certs
+              readOnly: true
             - name: vector-data
               mountPath: /vector-data-dir
 
@@ -157,6 +161,10 @@ spec:
         - name: vector-config
           configMap:
             name: vector-config
+
+        - name: vector-certs
+          secret:
+            secretName: vector-certs
             optional: false
         - name: vector-data
           persistentVolumeClaim:
