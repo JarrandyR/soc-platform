@@ -31,9 +31,6 @@ data:
       - "CN=admin"
 
     # If you use tenants (you do)
-    plugins.security.multitenancy.enabled: true
-    plugins.security.multitenancy.tenants.enable_private: true
-    plugins.security.multitenancy.tenants.enable_global: true
 
     # Helpful defaults
     action.auto_create_index: true
