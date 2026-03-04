@@ -9,5 +9,6 @@ resources:
   - secret.yaml
   - service.yaml
   - configmap-wazuh-manager-config.yaml
+  - vector-config.yaml
   - statefulset.yaml
   - vector-data-pvc.yaml
