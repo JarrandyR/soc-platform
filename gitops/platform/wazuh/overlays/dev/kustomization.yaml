@@ -5,3 +5,6 @@ namespace: platform-wazuh
 
 resources:
   - ../../base
+
+patches:
+  - path: wazuh-manager-disable-filebeat.patch.yaml
