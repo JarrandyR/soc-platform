@@ -12,7 +12,7 @@ data:
     opensearch.username: "kibanaserver"
     opensearch.password: "kibanaserver"
 
-    opensearch.requestHeadersWhitelist: [authorization, securitytenant]
+    opensearch.requestHeadersAllowlist: [authorization, securitytenant]
 
     opensearch_security.multitenancy.enabled: true
     opensearch_security.multitenancy.tenants.enable_global: true
