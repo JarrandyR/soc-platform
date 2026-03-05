@@ -9,3 +9,5 @@ resources:
   - configmap.yaml
 
   - ingress.yaml
+
+  - service.yaml
