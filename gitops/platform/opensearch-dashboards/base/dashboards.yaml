@@ -19,3 +19,7 @@ spec:
             - name: osd-config
               mountPath: /usr/share/opensearch-dashboards/config/opensearch_dashboards.yml
               subPath: opensearch_dashboards.yml
+      volumes:
+        - name: osd-config
+          configMap:
+            name: opensearch-dashboards-config
